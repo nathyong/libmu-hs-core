@@ -1,7 +1,6 @@
 {-#LANGUAGE NoImplicitPrelude#-}
 
 module LibMu.TypeCheck (
-  Context,         -- String
   Log,             -- [String]
   Typed(..),
   retType,

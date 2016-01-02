@@ -1,11 +1,116 @@
 {-# LANGUAGE NoImplicitPrelude, FlexibleInstances #-}
 
-module LibMu.Builder where
+module LibMu.Builder (
+  BuilderState(..),
+  Builder,
+  Function(..),
+  Block(..),
+  Error,
+
+  runBuilder,
+  flatten,
+  emptyBuilderState,
+  
+  getTypedef,
+  getTypedefs,
+  containsType,
+
+  getConstant,
+  getConstants,
+  containsConst,
+
+  getFuncSig,
+  containsFuncSig,
+
+  getFuncDecl,
+  containsFuncDecl,
+  
+  getGlobal,
+  containsGlobal,
+  
+  getFuncDef,
+  containsFuncDef,
+
+  putFuncSig,
+  putFunction,
+  putTypeDef,
+  putGlobal,
+  putConstant,
+  putFuncDecl,
+
+  createVariable,
+  createVariables,
+
+  createExecClause,
+  putBasicBlock,
+  withBasicBlock,
+  (>>-),
+  
+  putBinOp,
+  putConvOp,
+  putCmpOp,
+  putAtomicRMW,
+  putCmpXchg,
+  putFence,
+  putNew,
+  putNewHybrid,
+  putAlloca,
+  putAllocaHybrid,
+  setTermInstRet,
+  setTermInstThrow,
+  putCall,
+  putCCall,
+  setTermInstTailCall,
+  setTermInstBranch,
+  setTermInstBranch2,
+  putWatchPoint,
+  setTermInstTrap,
+  setTermInstWPBranch,
+  setTermInstSwitch,
+  setTermInstSwapStack,
+  putNewThread,
+  putComminst,
+  putLoad,
+  putStore,
+
+  putGetElemIRef,
+  
+  lift,
+  get,
+
+  Log,
+  retType,
+  checkExpression,
+  checkAssign,
+  checkAst,
+  checkBuilder,
+
+  PrettyPrint (..),
+
+  Scope(..),
+  CallConvention(..),
+  UvmType(..),
+  SSAVariable(..),
+  UvmTypeDef(..),
+  FuncSig(..),
+  ExceptionClause(..),
+  BinaryOp(..),
+  CompareOp(..),
+  ConvertOp(..),
+  AtomicRMWOp(..),
+  MemoryOrder(..),
+  CurStackClause(..),
+  NewStackClause(..),
+  Program(..)
+  ) where
 
 import           Prelude
 import           Control.Monad.Trans.Class (lift)
 import           Control.Monad.Trans.State.Strict
 import           Control.Monad.Trans.Except
+import           LibMu.PrettyPrint (PrettyPrint(..))
+import           LibMu.TypeCheck (
+  Log, retType, checkExpression, checkAssign, checkAst)
 
 import qualified Data.Map.Strict as M
 import           Text.Printf (printf)
@@ -59,6 +164,9 @@ extractOrdered m mask = case mask of
 
 checkBuilder :: BuilderState -> Log
 checkBuilder = checkAst . flatten
+
+emptyBuilderState :: BuilderState
+emptyBuilderState = BuilderState M.empty M.empty [] M.empty M.empty M.empty M.empty M.empty []
 
 type Error = String
 type Builder = ExceptT Error (State BuilderState)
@@ -120,6 +228,24 @@ containsFuncSig name = do
     Just (FunctionSignature _) -> return True
     Just _ -> throwE $ printf "Found non function signature with specified id: %s" name
 
+
+getGlobal :: String -> Builder SSAVariable
+getGlobal name = do
+  pState <- lift get
+  case M.lookup name (globals pState) of
+    Nothing -> throwE $ printf "Failed to find global definition: %s" name
+    Just (GlobalDef var _) -> return var
+    _ -> throwE $ printf "Found non global with specified id: %s" name
+
+containsGlobal :: String -> Builder Bool
+containsGlobal name = do
+  pState <- lift get
+  case M.lookup name (globals pState) of
+    Nothing -> return False
+    Just (GlobalDef _ _) -> return True
+    Just _ -> return False
+    
+
 getFuncDecl :: String -> Builder FuncSig
 getFuncDecl name = do
   pState <- lift get
@@ -128,13 +254,13 @@ getFuncDecl name = do
     Just (FunctionDecl _ sig) -> return sig
     Just _ -> throwE $ printf "Found non funcdecl with specified id: %s" name
 
-getGlobalDef :: String -> Builder SSAVariable
-getGlobalDef name = do
+containsFuncDecl :: String ->  Builder Bool
+containsFuncDecl name = do
   pState <- lift get
   case M.lookup name (globals pState) of
-    Nothing -> throwE $ printf "Failed to find global definition: %s" name
-    Just (GlobalDef var _) -> return var
-    _ -> throwE $ printf "Found non global with specified id: %s" name
+    Nothing -> return False
+    Just (FunctionDecl _ _) -> return True
+    Just _ -> return False
 
 getFuncDef :: String -> String -> Builder Declaration
 getFuncDef name ver = do
@@ -144,14 +270,13 @@ getFuncDef name ver = do
     Just func@(FunctionDef _ _ _ _) -> return func
     Just _ -> throwE $ printf "Found non function def with specified id: %s" (name ++ ver)
 
-containsGlobal :: String -> Builder Bool
-containsGlobal name = do
+containsFuncDef :: String -> String -> Builder Bool
+containsFuncDef name ver = do
   pState <- lift get
-  case M.lookup name (globals pState) of
+  case M.lookup (name ++ ver) (functionDefs pState) of
     Nothing -> return False
-    Just (GlobalDef _ _) -> return True
+    Just (FunctionDef _ _ _ _) -> return True
     Just _ -> return False
-
 
 putFuncSig :: String -> [UvmTypeDef] -> [UvmTypeDef] -> Builder FuncSig
 putFuncSig name args ret = do
@@ -191,15 +316,13 @@ putTypeDef name uvmType = do
                     })
   return tDef
 
-putFunctionDecl :: String -> String -> Builder ()
-putFunctionDecl name sig = do
-  fSig <- getFuncSig sig
+putFuncDecl :: String -> FuncSig -> Builder ()
+putFuncDecl name fSig = 
   lift $ modify (\pState -> pState {funcdecls = M.insert name (FunctionDecl name fSig) (funcdecls pState)
                                    })
 
-putGlobal :: String -> String -> Builder SSAVariable
-putGlobal name tName = do
-  dType <- getTypedef tName
+putGlobal :: String -> UvmTypeDef -> Builder SSAVariable
+putGlobal name dType = do
   let var = SSAVariable Global name (UvmTypeDef ("iref" ++ uvmTypeDefName dType) (IRef dType))
   lift $ modify (\pState ->
                   pState {

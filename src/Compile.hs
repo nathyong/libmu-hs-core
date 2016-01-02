@@ -1,21 +1,13 @@
 {-#LANGUAGE NoImplicitPrelude#-}
 
-module Compile where
+module Compile (
+  compileProgram
+  ) where
 
+import LibMu.Builder
+import Parser (Token (..))
 import Prelude hiding (EQ)
 import Text.Printf
-import qualified Data.Map as M
-import Control.Monad.Trans.Class (lift)
-import Control.Monad.Trans.State.Strict (get)
-import Control.Monad.Trans.Except
-
-import Parser (Token (..))
-import LibMu.Builder
-import LibMu.MuSyntax
-import LibMu.TypeCheck hiding (ts)
-import LibMu.PrettyPrint
-
-import System.IO.Unsafe (unsafePerformIO)
 
 type BFTree = [Token]
 
@@ -26,7 +18,7 @@ compile tree = do
   irefi32 <- putTypeDef "irefi32" (IRef i32)
   arri32x3K <- putTypeDef "arri32x3K" (Array i32 30000)
   iref_arri32x3K <- putTypeDef "iref_arri32x3K" (IRef arri32x3K)
-  runner <- putGlobal "runner" "arri32x3K"
+  runner <- putGlobal "runner" arri32x3K
 
   i32_1 <- putConstant "i32_1" i32 "1"
   i32_0 <- putConstant "i32_0" i32 "0"
@@ -76,7 +68,7 @@ putTokens func block count prog = case prog of
     
     irefi32 <- getTypedef "irefi32"
     
-    runner <- getGlobalDef "runner"
+    runner <- getGlobal "runner"
 
     let index = createVariable "index" i32
 
@@ -170,26 +162,6 @@ putTokens func block count prog = case prog of
           setTermInstBranch nxtBlock [index]
           
         putTokens func nxtBlock (succ count) ts
-
-fromRight (Right a) = a
-
-fromLeft (Left a) = a
-
-genNextVariable :: SSAVariable -> SSAVariable
-genNextVariable (SSAVariable scope name vType) = SSAVariable scope (first ++ (printf "%.4d" $ succ $ readI second)) vType
-  where (first, second) = splitAt (length name - 4) name
-
-genNextVariableStart :: SSAVariable -> SSAVariable
-genNextVariableStart (SSAVariable scope name vType) = SSAVariable scope (name ++ "0000") vType
-
-readI :: String -> Int
-readI = read
-
-emptyBuilderState :: BuilderState
-emptyBuilderState = BuilderState M.empty M.empty [] M.empty M.empty M.empty M.empty M.empty []
-
-checkProgram :: IO ()
-checkProgram = putStrLn $ unlines $ checkAst $ flatten $ fromRight $ runBuilder (compile [Increment, Decrement, PtrInc, PtrDec, Loop [Decrement], PtrInc, Decrement, PutChar, GetChar]) emptyBuilderState
-
+        
 compileProgram :: [Token] -> Either Error BuilderState
 compileProgram prog = runBuilder (compile prog) emptyBuilderState
