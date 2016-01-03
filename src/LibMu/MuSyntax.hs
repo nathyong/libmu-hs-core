@@ -5,7 +5,7 @@
 
 module LibMu.MuSyntax where 
 
-import Prelude (Eq(..), Show(..), String, Int, Bool, Maybe)
+import Prelude (Eq(..), Ord(..), Show(..), String, Int, Bool, Maybe)
 
 data CallConvention = Mu
                     | Foreign String
@@ -32,6 +32,7 @@ data UvmType = MuInt {intLen :: Int}
              | Vector {vectorType :: UvmTypeDef, vectorLen :: Int}
              | FuncRef {funcRefSig :: FuncSig}
              | UFuncPtr {ufuncPtrSig ::FuncSig}
+               deriving (Eq, Ord)
                         
 data SSAVariable = SSAVariable {
   varScope :: Scope,
@@ -42,13 +43,13 @@ data SSAVariable = SSAVariable {
 data UvmTypeDef = UvmTypeDef {
   uvmTypeDefName :: String,
   uvmTypeDefType :: UvmType
-  }
+  } deriving (Eq, Ord)
 
 data FuncSig = FuncSig {
   funcSigName :: String,
   funcSigArgTypes :: [UvmTypeDef],
   funcSigReturnType :: [UvmTypeDef]
-  }
+  } deriving (Eq, Ord)
 
 data ExceptionClause = ExceptionClause {
   exceptionNor :: DestinationClause,
@@ -295,6 +296,7 @@ data Expression = BinaryOperation {
   branch2BranchFalse :: DestinationClause
   }
                 | WatchPoint {
+  watchpointname :: SSAVariable,
   watchpointId :: Int,
   watchpointTypes :: [UvmTypeDef],
   watchpointdis :: DestinationClause,
@@ -303,6 +305,7 @@ data Expression = BinaryOperation {
   watchpointKeepAlive :: Maybe KeepAliveClause
   }
                 | Trap {
+  trapName :: SSAVariable,
   trapTypes :: [UvmTypeDef],
   trapExceptionClause :: Maybe ExceptionClause,
   trapKeepAlive :: Maybe KeepAliveClause
@@ -375,8 +378,8 @@ data Expression = BinaryOperation {
                 | InsertValueS {
   structInsertType :: UvmTypeDef,
   structInsertIndex :: Int,
-  structInsertNewVal :: SSAVariable,
   structInsertStruct :: SSAVariable,
+  structInsertNewVal :: SSAVariable,
   structInsertExecClause :: Maybe ExceptionClause
   }
                 | ExtractValue {   
@@ -427,7 +430,7 @@ data Expression = BinaryOperation {
   shiftIRefTypeOpnd :: UvmTypeDef,
   shiftIRefTypeIndex :: UvmTypeDef,
   shiftIRefOpnd :: SSAVariable,
-  shiftIRefIndex :: SSAVariable,
+  shiftIRefOffset :: SSAVariable,
   shiftIRefExecClause :: Maybe ExceptionClause
   }
                 | GetVarPartIRef {
@@ -435,6 +438,9 @@ data Expression = BinaryOperation {
   getVarPartIRefTypeOpnd :: UvmTypeDef,
   getVarPartIRefOpnd :: SSAVariable,
   getVarPartIRefExecClause :: Maybe ExceptionClause
+  }
+                | Comment {
+  commentVal :: String
   }
 
 data CurStackClause = RetWith {

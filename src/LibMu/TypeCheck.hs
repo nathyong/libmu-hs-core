@@ -307,8 +307,8 @@ checkExpression e = case e of
   TailCall sig v1 vLst -> ((uvmTypeDefType $ varType v1) #= (FuncRef sig)) && (map varType vLst #= funcSigArgTypes sig)
   Branch1 _ -> True
   Branch2 v1 _ _ -> (uvmTypeDefType $ varType v1) #= (MuInt 1)
-  WatchPoint _ _ _ _ _ _ -> True
-  Trap _ _ _ -> True
+  WatchPoint _ _ _ _ _ _ _ -> True
+  Trap _ _ _ _ -> True
   WPBranch _ _ _ -> True
   Switch t1 v1 _ blocks -> allSameType t1 [v1] && (all (\(var, _) -> (varType var) #= t1) blocks)
   SwapStack v1 _ _ _ _ -> ts (uvmTypeDefType $ varType v1) StackRef
@@ -332,7 +332,8 @@ checkExpression e = case e of
     where v1Type = uvmTypeDefType $ varType v1
   GetVarPartIRef _ t1 v1 _ -> (isHybrid t1) && ((v1Type #= IRef t1) || (v1Type #= UPtr t1))
     where v1Type = uvmTypeDefType $ varType v1
-
+  Comment _ -> True
+  
 retType :: Expression -> [UvmType]
 retType expr = case expr of
   BinaryOperation _ t _ _ _ -> [uvmTypeDefType t]
@@ -354,8 +355,8 @@ retType expr = case expr of
   CCall _ _ sig _ _ _ _ -> map uvmTypeDefType $ funcSigReturnType sig
   Branch1 _ -> []
   Branch2 _ _ _ -> []
-  WatchPoint _ ts _ _ _ _ -> map uvmTypeDefType ts
-  Trap ts _ _ -> map uvmTypeDefType ts
+  WatchPoint _ _ ts _ _ _ _ -> map uvmTypeDefType ts
+  Trap _ ts _ _ -> map uvmTypeDefType ts
   WPBranch _ _ _ -> []
   Switch _ _ _ _ -> []
   SwapStack _ _ _ _ _ -> []
@@ -390,7 +391,7 @@ retType expr = case expr of
     (True, Hybrid _ hType) -> [UPtr hType]
     (False, Hybrid _ hType) -> [IRef hType]
     _ -> []
-  
+  Comment _ -> []
 
 checkAssign :: Assign -> Bool
 checkAssign ass@(Assign vars expr) = case expr of

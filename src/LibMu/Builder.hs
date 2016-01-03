@@ -1,4 +1,4 @@
-{-# LANGUAGE NoImplicitPrelude, FlexibleInstances #-}
+{-# LANGUAGE NoImplicitPrelude, FlexibleInstances#-}
 
 module LibMu.Builder (
   BuilderState(..),
@@ -10,7 +10,7 @@ module LibMu.Builder (
   runBuilder,
   flatten,
   emptyBuilderState,
-  
+
   getTypedef,
   getTypedefs,
   containsType,
@@ -24,10 +24,10 @@ module LibMu.Builder (
 
   getFuncDecl,
   containsFuncDecl,
-  
+
   getGlobal,
   containsGlobal,
-  
+
   getFuncDef,
   containsFuncDef,
 
@@ -45,7 +45,7 @@ module LibMu.Builder (
   putBasicBlock,
   withBasicBlock,
   (>>-),
-  
+
   putBinOp,
   putConvOp,
   putCmpOp,
@@ -73,8 +73,10 @@ module LibMu.Builder (
   putLoad,
   putStore,
 
+  putComment,
+
   putGetElemIRef,
-  
+
   lift,
   get,
 
@@ -101,34 +103,39 @@ module LibMu.Builder (
   MemoryOrder(..),
   CurStackClause(..),
   NewStackClause(..),
-  Program(..)
+  Program(..),
+
+  loadStdPrelude,
+  loadPrelude
   ) where
 
-import           Prelude
-import           Control.Monad.Trans.Class (lift)
-import           Control.Monad.Trans.State.Strict
+import           Control.Monad.Trans.Class        (lift)
 import           Control.Monad.Trans.Except
-import           LibMu.PrettyPrint (PrettyPrint(..))
-import           LibMu.TypeCheck (
-  Log, retType, checkExpression, checkAssign, checkAst)
+import           Control.Monad.Trans.State.Strict
+import           Control.Monad.Trans.Reader
+import           LibMu.PrettyPrint                (PrettyPrint (..))
+import           LibMu.TypeCheck                  (Log, checkAssign, checkAst,
+                                                   checkExpression, retType)
+import           Prelude
 
-import qualified Data.Map.Strict as M
-import           Text.Printf (printf)
+import qualified Data.Map.Strict                  as M
+import           Text.Printf                      (printf)
 
 import           LibMu.MuSyntax
 import           LibMu.PrettyPrint
 import           LibMu.TypeCheck
+import           LibMu.MuPrelude
 
 --Holds Program state for lookup by name
 data BuilderState = BuilderState {
-  constants :: M.Map String Declaration,
-  typedefs :: M.Map String Declaration,
-  typedefOrd :: [String], -- hold the order in which typedefs were declared
-  funcsigs :: M.Map String Declaration,
-  funcdecls :: M.Map String Declaration,
-  globals :: M.Map String Declaration,
-  exposes :: M.Map String Declaration,
-  functionDefs :: M.Map String Declaration,
+  constants      :: M.Map String Declaration,
+  typedefs       :: M.Map String Declaration,
+  typedefOrd     :: [String], -- hold the order in which typedefs were declared
+  funcsigs       :: M.Map String Declaration,
+  funcdecls      :: M.Map String Declaration,
+  globals        :: M.Map String Declaration,
+  exposes        :: M.Map String Declaration,
+  functionDefs   :: M.Map String Declaration,
   functionDefOrd :: [String] -- hold the order in which functions were declared
   }
 
@@ -173,6 +180,29 @@ type Builder = ExceptT Error (State BuilderState)
 
 runBuilder :: Builder a -> BuilderState -> Either Error a
 runBuilder b s = evalState (runExceptT b) s
+
+loadStdPrelude :: Builder ([UvmTypeDef], [SSAVariable], [FuncSig])
+loadStdPrelude = loadPrelude preludeContents
+                   
+loadPrelude :: MuPrelude -> Builder ([UvmTypeDef], [SSAVariable], [FuncSig])
+loadPrelude (types, consts, sigs) = do
+  lift $ modify (\pState ->
+                  pState {
+                    typedefs = M.union (typedefs pState) (M.fromList tPrelude),
+                    typedefOrd = (typedefOrd pState) ++ tNames,
+                    constants = M.union (constants pState) (M.fromList cPrelude),
+                    funcsigs = M.union (funcsigs pState) (M.fromList sPrelude)
+                    }
+                )
+  return (types, map constVariable consts, sigs)
+                 where
+                   tNames = map uvmTypeDefName types
+                   cNames = map (varID . constVariable) consts
+                   sNames = map funcSigName sigs
+
+                   tPrelude = zip tNames (map Typedef types)
+                   cPrelude = zip cNames consts
+                   sPrelude = zip sNames (map FunctionSignature sigs)
 
 getTypedef :: String -> Builder UvmTypeDef
 getTypedef name = do
@@ -244,7 +274,7 @@ containsGlobal name = do
     Nothing -> return False
     Just (GlobalDef _ _) -> return True
     Just _ -> return False
-    
+
 
 getFuncDecl :: String -> Builder FuncSig
 getFuncDecl name = do
@@ -317,7 +347,7 @@ putTypeDef name uvmType = do
   return tDef
 
 putFuncDecl :: String -> FuncSig -> Builder ()
-putFuncDecl name fSig = 
+putFuncDecl name fSig =
   lift $ modify (\pState -> pState {funcdecls = M.insert name (FunctionDecl name fSig) (funcdecls pState)
                                    })
 
@@ -347,6 +377,19 @@ putBasicBlock name vars exec fn@(Function func ver) = do
                       functionDefs = M.insert (fName ++ fVer) (FunctionDef fName fVer fSig (fBody ++ [BasicBlock name vars exec [] (Return [])])) (functionDefs pState)
                            })
   return $ Block name fn
+
+
+{-
+Basic Block Manipulation functions.
+Each function can be used to add an instruction to a given basic block.
+
+withBasicBlock block $
+    putBinOp ... >>-
+    putCmpOp ... >>-
+    setTermInstBranch ...
+-}
+
+
 
 withBasicBlock :: Block -> (BasicBlock -> BasicBlock) -> Builder ()
 withBasicBlock (Block name (Function func ver)) prog = do
@@ -458,18 +501,35 @@ setTermInstBranch2 cond (Block trueBlock _) trueVars (Block falseBlock _) falseV
   basicBlockTerminst = Branch2 cond (DestinationClause trueBlock trueVars) (DestinationClause falseBlock falseVars)
   }
 
-putWatchPoint :: [SSAVariable] -> Int -> [UvmTypeDef] -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> Maybe (Block, [SSAVariable]) -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
-putWatchPoint assignee wpid ts (Block dis _) disArgs (Block ena _) enaArgs wpexec alive block = block {
-    basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (WatchPoint wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive))]
+putWatchPoint :: [SSAVariable] -> SSAVariable -> Int -> [UvmTypeDef] -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> Maybe (Block, [SSAVariable]) -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
+putWatchPoint assignee name wpid ts (Block dis _) disArgs (Block ena _) enaArgs wpexec alive block = block {
+    basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive))]
     }
   where
     wp = case wpexec of
       Nothing -> Nothing
       Just (Block wpBlock _, wpVars) -> Just $ WPExceptionClause $ DestinationClause wpBlock wpVars
-  
-setTermInstTrap :: [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
-setTermInstTrap ts exec alive block = block {
-  basicBlockTerminst = Trap ts exec (KeepAlive <$> alive)
+
+
+putTrap :: [SSAVariable] -> SSAVariable -> [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
+putTrap assignee name ts exec alive block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (Trap name ts exec (KeepAlive <$> alive))]
+  }
+
+
+setTermInstWatchPoint :: SSAVariable -> Int -> [UvmTypeDef] -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> Maybe (Block, [SSAVariable]) -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
+setTermInstWatchPoint name wpid ts (Block dis _) disArgs (Block ena _) enaArgs wpexec alive block = block {
+    basicBlockTerminst = WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive)
+    }
+  where
+    wp = case wpexec of
+      Nothing -> Nothing
+      Just (Block wpBlock _, wpVars) -> Just $ WPExceptionClause $ DestinationClause wpBlock wpVars
+
+
+setTermInstTrap :: SSAVariable -> [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
+setTermInstTrap name ts exec alive block = block {
+  basicBlockTerminst = Trap name ts exec (KeepAlive <$> alive)
   }
 
 setTermInstWPBranch :: Int -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> BasicBlock -> BasicBlock
@@ -507,7 +567,7 @@ putComminst assignee name flags types sigs args exec alive block = block {
 
 putLoad :: SSAVariable -> Bool -> Maybe MemoryOrder -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putLoad assignee ptr memOrd var exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (Load ptr memOrd vType var  exec)] 
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (Load ptr memOrd vType var  exec)]
   }
   where
     vType :: UvmTypeDef
@@ -527,11 +587,53 @@ putStore ptr memOrd loc newVal exec block = block {
       UPtr t -> t
       _ -> varType loc --errorful type, but let it fail elsewhere
 
---ToDo put Extract Values & Insert Values
+putExtractValueS1 :: SSAVariable -> Int -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putExtractValueS1 assignee index opnd exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ExtractValueS (varType opnd) index opnd exec)]
+  }
 
---ToDo getIRef
+putInsertValueS :: SSAVariable -> Int -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putInsertValueS assignee index opnd newVal exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (InsertValueS (varType opnd) index newVal opnd exec)]
+  }
 
---ToDo getFieldIRef
+putExtractValue :: SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putExtractValue assignee opnd index exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ExtractValue (varType opnd) (varType index) opnd index exec)]
+  }
+
+putInsertValue :: SSAVariable -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putInsertValue assignee opnd index newVal exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (InsertValue (varType opnd) (varType index) opnd index newVal exec)]
+  }
+
+putShuffleVector :: SSAVariable -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putShuffleVector assignee v1 v2 mask exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ShuffleVector (varType v1) (varType mask) v1 v2 mask exec)]
+  }
+
+
+putGetIRef :: SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putGetIRef assignee opnd exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (GetIRef opndType opnd exec)]
+  }
+  where
+    opndType :: UvmTypeDef
+    opndType = case uvmTypeDefType $ varType opnd of
+      Ref t -> t
+      _ -> varType opnd --errorful type, but let it fail elsewhere
+
+
+putGetFieldIRef :: SSAVariable -> Bool -> Int -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putGetFieldIRef assignee ptr index opnd exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (GetFieldIRef ptr opndType index opnd exec )]
+  }
+  where
+    opndType :: UvmTypeDef
+    opndType = case uvmTypeDefType $ varType opnd of
+      IRef t -> t
+      UPtr t -> t
+      _ -> varType opnd --errorful type, but let it fail elsewhere
 
 putGetElemIRef :: SSAVariable -> Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putGetElemIRef assignee ptr opnd index exec block = block {
@@ -543,3 +645,48 @@ putGetElemIRef assignee ptr opnd index exec block = block {
       IRef t -> t
       UPtr t -> t
       _ -> varType opnd --errorful type, but let it fail elsewhere
+
+
+putShiftIRef :: SSAVariable -> Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putShiftIRef assignee ptr opnd offset exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ShiftIRef ptr opndType (varType offset) opnd offset exec)]
+  }
+  where
+    opndType :: UvmTypeDef
+    opndType = case uvmTypeDefType $ varType opnd of
+      IRef t -> t
+      UPtr t -> t
+      _ -> varType opnd --errorful type, but let it fail elsewhere
+
+
+putGetVarPartIRef :: SSAVariable -> Bool -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
+putGetVarPartIRef assignee ptr opnd exec block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (GetVarPartIRef ptr opndType opnd exec)]
+  }
+  where
+    opndType :: UvmTypeDef
+    opndType = case uvmTypeDefType $ varType opnd of
+      IRef t -> t
+      UPtr t -> t
+      _ -> varType opnd --errorful type, but let it fail elsewhere
+
+
+putComment :: String -> BasicBlock -> BasicBlock
+putComment str block = block {
+  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [] (Comment str)]
+  }
+
+{-
+Code to insert loops and higher order structures into mu code
+-}
+
+{-
+eqOp :: SSAVariable -> SSAVariable -> BasicBlock -> Reader Int BasicBlock
+eqOp v1 v2 block = do
+  m <- ask
+  case M.lookup (varType v1) m of
+    Nothing -> error "type def not in known scope"
+    Just count -> putCmpOp EQ
+    where
+      assignee = SSAVariable Local (printf "var%.2d" int)
+-}

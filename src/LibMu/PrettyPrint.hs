@@ -151,9 +151,9 @@ instance PrettyPrint Expression where
         TailCall s1 v1 lst -> printf "TAILCALL <%s> %s %s" (pp s1) (pp v1) (printArgList lst)
         Branch1 dest -> printf "BRANCH %s" (pp dest)
         Branch2 cond d1 d2 -> printf "BRANCH2 %s %s %s" (pp cond) (pp d1) (pp d2)
-        WatchPoint iD lst dis ena exec alive ->
-          printf "WATCHPOINT %d %s %s %s%s%s" iD (printTypeList lst) (pp dis) (pp ena) (printMaybe pp exec) (printMaybe pp alive)
-        Trap lst exec alive -> printf "TRAP %s%s%s" (printTypeList lst) (printMaybe pp exec) (printMaybe pp alive)
+        WatchPoint name iD lst dis ena exec alive ->
+          printf "[%s] WATCHPOINT %d %s %s %s%s%s" (pp name) iD (printTypeList lst) (pp dis) (pp ena) (printMaybe pp exec) (printMaybe pp alive)
+        Trap name lst exec alive -> printf "[%s] TRAP %s%s%s" (pp name) (printTypeList lst) (printMaybe pp exec) (printMaybe pp alive)
         WPBranch iD dis ena -> printf "WPBRANCH %d %s %s" iD (pp dis) (pp ena)
         Switch t1 v1 dest blocks -> printf "SWITCH <%s> %s %s {\n%s}" (pp t1) (pp v1) (pp dest) (concat $ runReader (mapM printBlock blocks) (ind ++ "\t"))
         SwapStack v1 csClause nsClause exec alive ->
@@ -173,6 +173,7 @@ instance PrettyPrint Expression where
         GetElemIRef f1 t1 t2 v1 v2 exec -> printf "GETELEMIREF%s <%s %s> %s %s%s" (if f1 then " PTR" else "") (pp t1) (pp t2) (pp v1) (pp v2) (printMaybe pp exec)
         ShiftIRef f1 t1 t2 v1 v2 exec -> printf "SHIFTIREF%s <%s %s> %s %s%s" (if f1 then " PTR" else "") (pp t1) (pp t2) (pp v1) (pp v2) (printMaybe pp exec)
         GetVarPartIRef f1 t1 v1 exec -> printf "GETVARPARTIREF%s <%s> %s%s" (if f1 then " PTR" else "") (pp t1) (pp v1) (printMaybe pp exec)
+        Comment str -> printf "//%s" str
         )
     where
       printTypeList :: [UvmTypeDef] -> String

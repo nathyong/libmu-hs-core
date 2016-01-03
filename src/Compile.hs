@@ -13,15 +13,18 @@ type BFTree = [Token]
 
 compile :: BFTree -> Builder BuilderState
 compile tree = do
-  i32 <- putTypeDef "i32" (MuInt 32)
-  i1 <- putTypeDef "i1" (MuInt 1)
+  --i32 <- putTypeDef "i32" (MuInt 32)
+  --i1 <- putTypeDef "i1" (MuInt 1)
+  (_:_:_:i32:_, _:_:_:_:_:_:i32_0:i32_1:_,_)<- loadStdPrelude
+  
+  
   irefi32 <- putTypeDef "irefi32" (IRef i32)
   arri32x3K <- putTypeDef "arri32x3K" (Array i32 30000)
   iref_arri32x3K <- putTypeDef "iref_arri32x3K" (IRef arri32x3K)
   runner <- putGlobal "runner" arri32x3K
 
-  i32_1 <- putConstant "i32_1" i32 "1"
-  i32_0 <- putConstant "i32_0" i32 "0"
+  --i32_1 <- putConstant "i32_1" i32 "1"
+  --i32_0 <- putConstant "i32_0" i32 "0"
 
   char <- putTypeDef "char" (MuInt 8)
   addrType <- putTypeDef "AddrType" (MuInt 64)
@@ -80,6 +83,7 @@ putTokens func block count prog = case prog of
             arrInc = createVariable "arrInc" i32
             
         withBasicBlock block $ 
+          putComment "Increment" >>-
           putGetElemIRef arrElem False runner index Nothing >>-
           putAtomicRMW ADD arrInc False SEQ_CST arrElem i32_1 Nothing >>-
           setTermInstBranch nxtBlock [index]
@@ -90,6 +94,7 @@ putTokens func block count prog = case prog of
             arrDec = createVariable "arrDec" i32
             
         withBasicBlock block $
+          putComment "Decrement" >>-
           putGetElemIRef arrElem False runner index Nothing >>-
           putAtomicRMW SUB arrDec False SEQ_CST arrElem i32_1 Nothing >>-
           setTermInstBranch nxtBlock [index]
@@ -99,6 +104,7 @@ putTokens func block count prog = case prog of
         let indInc = createVariable "indInc" i32
         
         withBasicBlock block $
+          putComment "Ptr Increment" >>-
           putBinOp Add indInc index i32_1 Nothing >>-
           setTermInstBranch nxtBlock [indInc]
 
@@ -107,6 +113,7 @@ putTokens func block count prog = case prog of
         let indDec = createVariable "indDec" i32
         
         withBasicBlock block $
+          putComment "Ptr Decrement" >>-
           putBinOp Sub indDec index i32_1 Nothing >>-
           setTermInstBranch nxtBlock [indDec]
 
@@ -119,11 +126,16 @@ putTokens func block count prog = case prog of
         (finBlock, finCount) <- putTokens func nxtBlock (succ count) prog
 
         withBasicBlock finBlock $
+          putComment (printf "Loop Back : %d" (pred count)) >>-
           setTermInstBranch block [index]
         
         contBlock <- putBasicBlock (printf "block%.4d" finCount) [index] Nothing func
+
+        withBasicBlock contBlock $
+          putComment (printf "Loop Continue : %d" (pred count))
         
         withBasicBlock block $
+          putComment (printf "Loop Begin : %d" (pred count)) >>-
           putGetElemIRef arrElem False runner index Nothing >>- --iref i32
           putLoad arrVal False Nothing arrElem Nothing >>-
           putCmpOp EQ cmpRes arrVal i32_0 >>-
@@ -138,6 +150,7 @@ putTokens func block count prog = case prog of
             arrValChar = createVariable "arrValChar" char
             
         withBasicBlock block $
+          putComment "Put Char" >>-
           putGetElemIRef arrElem False runner index Nothing >>-
           putLoad arrVal False Nothing arrElem Nothing >>-
           putConvOp TRUNC arrValChar char arrVal Nothing >>-
@@ -154,6 +167,7 @@ putTokens func block count prog = case prog of
             arrValChar = createVariable "arrValChar" char
             
         withBasicBlock block $
+          putComment "Get Char" >>-
           putConvOp PTRCAST callee putchar_ptr putchar_address Nothing >>-
           putCCall [arrValChar] Mu putchar_ptr putchar_sig putchar_address [] Nothing Nothing >>-
           putConvOp ZEXT arrVal i32 arrValChar Nothing >>-

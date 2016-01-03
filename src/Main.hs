@@ -2,13 +2,10 @@
 
 import Prelude
 import System.Environment (getArgs)
-
 import CommandLine
 import Parser
-import LibMu.PrettyPrint
-import LibMu.TypeCheck
 import Compile
-import LibMu.Builder
+import LibMu.Builder (pp, checkBuilder)
 
 data Arg = File
          | Output
@@ -47,7 +44,7 @@ main = do
                   Right bs -> 
                     if check' then do
                       putStrLn "Type Check"
-                      putStrLn $ unlines $ checkAst $ flatten bs
+                      putStrLn $ unlines $ checkBuilder bs
                       putStrLn $ pp bs
                     else putStrLn $ pp bs
             STRING (Just output) -> 
@@ -59,7 +56,7 @@ main = do
                   Right bs -> 
                     if check' then do
                       putStrLn "Type Check"
-                      putStrLn $ unlines $ checkAst $ flatten bs
+                      putStrLn $ unlines $ checkBuilder bs
                       writeFile output $ pp bs
                     else writeFile output $ pp bs
                       
