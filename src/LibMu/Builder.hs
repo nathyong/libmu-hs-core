@@ -78,6 +78,8 @@ module LibMu.Builder (
   putGetElemIRef,
 
   putIf,
+  putIfElse,
+  putWhile,
   
   lift,
   get,
@@ -122,7 +124,6 @@ import           Prelude hiding (EQ)
 
 import qualified Data.Map.Strict                  as M
 import           Text.Printf                      (printf)
-import           Data.Monoid                      (Monoid(..))
 
 import           LibMu.MuSyntax
 import           LibMu.PrettyPrint
@@ -678,8 +679,66 @@ putComment str block = block {
   basicBlockInstructions = (Assign [] (Comment str)):(basicBlockInstructions block)
   }
 
-putIf :: Int -> Function -> Block -> [SSAVariable] -> [SSAVariable] -> SSAVariable ->  (BasicBlock -> BasicBlock) -> Builder Block
-putIf count func entry ctx rets cond prog = do
+{-
+These Functions build generic program structures.
+
+Overall, each function must take context, in the form of a block representing the "entry" point of the statment.
+An int parsed to each function allows the function to generate unique block names to avoid name clashes.
+
+The programmer must pass contexts, those variables passed to each block generated. This documented no a per function basis.
+
+The functions also take a (BasicBlock -> BasicBlock) program(s) which are inserted into appropriate blocks as instructions to perform
+various tasks (such as a loop body, or conditional).
+
+Lastly, the functions all return references to each block they produced, in the order that they were produced. This is done to allow "fine tuning"
+such as nesting loops & if's  or puting in some more code later on.
+-}
+
+{-
+putIf: putIf will insert a conditionally evaluated code block into a given entry point.
+e.g.
+
+entry():
+  %cmp_res = EQ <@i32> %a %b
+  //putIf generates everything from here
+  branch2 %cmp_res progBlock(%a, %b) contBlock(%a, %b)
+progBlock(<@i32> %a, <@i32> %b):
+  ...
+  ...
+  branch contBlock(%c, %d)
+contBlock(<@i32> %a, <@i32> %b):
+  //to here
+  ...
+
+one interesting point to note:
+  - the variables parsed to progBlock & contBlock are the same. This is for simplicity, this should not be a problem using the following workaround.
+
+if you wish to pass a different set of variables to progBlock then to contBlock, simply include ALL variables in the context passed to putIf. some variables
+will be ignored in either contBlock or progBlock, but this is no problem.
+
+
+The return values of the progBlock are specified by the second contex passed to putIf.
+The SSAVariable passed tells putIf which variable in the entry block is to be used as the conditional boolean.
+The last parameter is a program which is inserted into the conditionally executed block.
+
+example usage:
+withBasicBlock entry $
+  putCmpOp EQ cmp_res a b >>-
+  putComment "putIf generates everything from here"
+
+(_, contBlock) <- putIf 2 entry [a, b] [c, d] cmp_res $
+  . . . (some program producing variables c & d)
+
+withBasicBlock contBlock $
+  putComment "to here" >>-
+  ... continue on.
+
+-}
+
+type Context = [SSAVariable]
+
+putIf :: Int -> Block -> Context -> Context -> SSAVariable ->  (BasicBlock -> BasicBlock) -> Builder (Block, Block)
+putIf count entry@(Block _ func) ctx rets cond prog = do
   progBlock <- putBasicBlock (printf "progBlock%.5d" count) ctx Nothing func
   contBlock <- putBasicBlock (printf "contBlock%.5d" count) ctx Nothing func
 
@@ -691,5 +750,64 @@ putIf count func entry ctx rets cond prog = do
     prog >>-
     setTermInstBranch contBlock rets
 
-  return contBlock
+  return (progBlock, contBlock)
 
+
+{-
+putIfElse
+-}
+
+putIfElse :: Int -> Block -> Context -> Context -> Context -> Context -> SSAVariable ->  (BasicBlock -> BasicBlock) -> (BasicBlock -> BasicBlock) -> Builder (Block, Block, Block)
+putIfElse count entry@(Block _ func) ctx retsTrue retsFalse rets cond trueProg falseProg = do
+  trueBlock <- putBasicBlock (printf "trueBlock%.5d" count) ctx Nothing func
+  falseBlock <- putBasicBlock (printf "falseBlock%.5d" count) ctx Nothing func
+  contBlock <- putBasicBlock (printf "contBlock%.5d" count) rets Nothing func
+
+  withBasicBlock entry $
+    setTermInstBranch2 cond trueBlock ctx falseBlock ctx
+
+  withBasicBlock trueBlock $
+    putComment "If True Block" >>-
+    trueProg >>-
+    setTermInstBranch contBlock retsTrue
+  
+  withBasicBlock falseBlock $
+    putComment "If False Block" >>-
+    falseProg >>-
+    setTermInstBranch contBlock retsFalse
+
+  return (trueBlock, falseBlock, contBlock)
+
+putWhile :: Int -> Block -> Context -> Context -> Context -> SSAVariable -> (BasicBlock -> BasicBlock) -> (BasicBlock -> BasicBlock) -> Builder (Block, Block, Block)
+putWhile count entry@(Block _ func) condCtx loopCtx contCtx condVar cond loop = do
+  condBlock <- putBasicBlock (printf "condBlock%.5d" count) condCtx Nothing func
+  loopBlock <- putBasicBlock (printf "loopBlock%.5d" count) loopCtx Nothing func
+  contBlock <- putBasicBlock (printf "contBlock%.5d" count) contCtx Nothing func
+
+  withBasicBlock entry $
+    setTermInstBranch condBlock condCtx
+
+  withBasicBlock condBlock $
+    putComment "While Condition Block" >>-
+    cond >>-
+    setTermInstBranch2 condVar loopBlock loopCtx contBlock contCtx
+
+  withBasicBlock loopBlock $
+    putComment "While Loop Block" >>-
+    loop >>-
+    setTermInstBranch condBlock condCtx
+  
+  return (condBlock, loopBlock, contBlock)
+
+{-
+entry:
+   branch condBlock[condCtx]
+condBlock(condCtx):
+   cmp_res = cmp a b
+   branch2 cmp_res loopBlock (loopCtx) contBlock (contCtx)
+loopBlock (loopCtx):
+   ...
+   Branch condBlock (condCtx)
+contBlock (contCtx):
+   ...
+-}
