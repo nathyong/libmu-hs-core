@@ -1,10 +1,10 @@
 {-# LANGUAGE NoImplicitPrelude, FlexibleInstances#-}
 
 module LibMu.Builder (
-  BuilderState(..),
+  BuilderState,
   Builder,
-  Function(..),
-  Block(..),
+  Function,
+  Block,
   Error,
 
   runBuilder,
@@ -77,6 +77,8 @@ module LibMu.Builder (
 
   putGetElemIRef,
 
+  putIf,
+  
   lift,
   get,
 
@@ -112,14 +114,15 @@ module LibMu.Builder (
 import           Control.Monad.Trans.Class        (lift)
 import           Control.Monad.Trans.Except
 import           Control.Monad.Trans.State.Strict
-import           Control.Monad.Trans.Reader
+import           Control.Monad.Trans.Writer.Strict
 import           LibMu.PrettyPrint                (PrettyPrint (..))
 import           LibMu.TypeCheck                  (Log, checkAssign, checkAst,
                                                    checkExpression, retType)
-import           Prelude
+import           Prelude hiding (EQ)
 
 import qualified Data.Map.Strict                  as M
 import           Text.Printf                      (printf)
+import           Data.Monoid                      (Monoid(..))
 
 import           LibMu.MuSyntax
 import           LibMu.PrettyPrint
@@ -374,7 +377,7 @@ putBasicBlock name vars exec fn@(Function func ver) = do
   (FunctionDef fName fVer fSig fBody) <- getFuncDef func ver
   lift $ modify $ (\pState ->
                     pState {
-                      functionDefs = M.insert (fName ++ fVer) (FunctionDef fName fVer fSig (fBody ++ [BasicBlock name vars exec [] (Return [])])) (functionDefs pState)
+                      functionDefs = M.insert (fName ++ fVer) (FunctionDef fName fVer fSig ((BasicBlock name vars exec [] (Return [])):fBody)) (functionDefs pState)
                            })
   return $ Block name fn
 
@@ -388,7 +391,6 @@ withBasicBlock block $
     putCmpOp ... >>-
     setTermInstBranch ...
 -}
-
 
 
 withBasicBlock :: Block -> (BasicBlock -> BasicBlock) -> Builder ()
@@ -412,58 +414,58 @@ withBasicBlock (Block name (Function func ver)) prog = do
 
 putBinOp :: BinaryOp -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putBinOp op assignee v1@(SSAVariable _ _ opType) v2 exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (BinaryOperation op opType v1 v2 exec)]
+  basicBlockInstructions = (Assign [assignee] (BinaryOperation op opType v1 v2 exec)):(basicBlockInstructions block)
   }
 
 putConvOp :: ConvertOp -> SSAVariable -> UvmTypeDef -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putConvOp op assignee dest var exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ConvertOperation op (varType var) dest var exec)]
+  basicBlockInstructions = (Assign [assignee] (ConvertOperation op (varType var) dest var exec)):(basicBlockInstructions block)
   }
 
 putCmpOp :: CompareOp -> SSAVariable -> SSAVariable -> SSAVariable -> BasicBlock -> BasicBlock
 putCmpOp op assignee v1@(SSAVariable _ _ opType) v2 block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (CompareOperation op opType v1 v2)]
+  basicBlockInstructions = (Assign [assignee] (CompareOperation op opType v1 v2)):(basicBlockInstructions block)
   }
 
 putAtomicRMW :: AtomicRMWOp -> SSAVariable -> Bool -> MemoryOrder -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putAtomicRMW op assignee ptr memOrd loc opnd exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (AtomicRMWOperation ptr memOrd op (varType opnd) loc opnd exec)]
+  basicBlockInstructions = (Assign [assignee] (AtomicRMWOperation ptr memOrd op (varType opnd) loc opnd exec)):(basicBlockInstructions block)
   }
 
 putCmpXchg :: (SSAVariable, SSAVariable) -> Bool -> Bool -> MemoryOrder -> MemoryOrder -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putCmpXchg (ass1, ass2) ptr weak mem1 mem2 loc expec desir exec block = case uvmTypeDefType $ varType loc of
   UPtr t -> block {
-    basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [ass1, ass2] (CmpXchg ptr weak mem1 mem2 t loc expec desir exec)]
+    basicBlockInstructions = (Assign [ass1, ass2] (CmpXchg ptr weak mem1 mem2 t loc expec desir exec)):(basicBlockInstructions block)
     }
   IRef t -> block {
-    basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [ass1, ass2] (CmpXchg ptr weak mem1 mem2 t loc expec desir exec)]
+    basicBlockInstructions = (Assign [ass1, ass2] (CmpXchg ptr weak mem1 mem2 t loc expec desir exec)):(basicBlockInstructions block)
     }
   _ -> block { --Incorrect types, let it fail else where
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [ass1, ass2] (CmpXchg ptr weak mem1 mem2 (varType loc) loc expec desir exec)]
+  basicBlockInstructions = (Assign [ass1, ass2] (CmpXchg ptr weak mem1 mem2 (varType loc) loc expec desir exec)):(basicBlockInstructions block)
     }
 
 putFence :: MemoryOrder -> BasicBlock -> BasicBlock
 putFence memOrd block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [] (Fence memOrd)]
+  basicBlockInstructions = (Assign [] (Fence memOrd)):(basicBlockInstructions block)
   }
 
 putNew :: SSAVariable -> UvmTypeDef -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putNew assignee t exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (New t exec)]
+  basicBlockInstructions = (Assign [assignee] (New t exec)):(basicBlockInstructions block)
   }
 
 putNewHybrid :: SSAVariable -> UvmTypeDef -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putNewHybrid assignee t len exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (NewHybrid t (varType len) len exec)]
+  basicBlockInstructions = (Assign [assignee] (NewHybrid t (varType len) len exec)):(basicBlockInstructions block)
                                                }
 putAlloca :: SSAVariable -> UvmTypeDef -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putAlloca assignee t exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (Alloca t exec)]
+  basicBlockInstructions = (Assign [assignee] (Alloca t exec)):(basicBlockInstructions block)
   }
 
 putAllocaHybrid :: SSAVariable -> UvmTypeDef -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putAllocaHybrid assignee t len exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (AllocaHybrid t (varType len) len exec)]
+  basicBlockInstructions = (Assign [assignee] (AllocaHybrid t (varType len) len exec)):(basicBlockInstructions block)
   }
 
 setTermInstRet :: [SSAVariable] -> BasicBlock -> BasicBlock
@@ -478,12 +480,12 @@ setTermInstThrow var block = block {
 
 putCall :: [SSAVariable] -> SSAVariable -> FuncSig -> [SSAVariable] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
 putCall assignee func sig args exec alive block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (Call sig func args exec (KeepAlive <$> alive))]
+  basicBlockInstructions = (Assign assignee (Call sig func args exec (KeepAlive <$> alive))):(basicBlockInstructions block)
   }
 
 putCCall :: [SSAVariable] ->  CallConvention -> UvmTypeDef -> FuncSig -> SSAVariable -> [SSAVariable] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
 putCCall assignee callConv t sig callee args exec alive block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (CCall callConv t sig callee args exec (KeepAlive <$> alive))]
+  basicBlockInstructions = (Assign assignee (CCall callConv t sig callee args exec (KeepAlive <$> alive))):(basicBlockInstructions block)
   }
 
 setTermInstTailCall :: FuncSig -> SSAVariable -> [SSAVariable] -> BasicBlock -> BasicBlock
@@ -503,7 +505,7 @@ setTermInstBranch2 cond (Block trueBlock _) trueVars (Block falseBlock _) falseV
 
 putWatchPoint :: [SSAVariable] -> SSAVariable -> Int -> [UvmTypeDef] -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> Maybe (Block, [SSAVariable]) -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
 putWatchPoint assignee name wpid ts (Block dis _) disArgs (Block ena _) enaArgs wpexec alive block = block {
-    basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive))]
+    basicBlockInstructions = (Assign assignee (WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive))):(basicBlockInstructions block)
     }
   where
     wp = case wpexec of
@@ -513,7 +515,7 @@ putWatchPoint assignee name wpid ts (Block dis _) disArgs (Block ena _) enaArgs 
 
 putTrap :: [SSAVariable] -> SSAVariable -> [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
 putTrap assignee name ts exec alive block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (Trap name ts exec (KeepAlive <$> alive))]
+  basicBlockInstructions = (Assign assignee (Trap name ts exec (KeepAlive <$> alive))):(basicBlockInstructions block)
   }
 
 
@@ -552,12 +554,12 @@ setTermInstSwapStack swappee csClause nsClause exec alive block = block {
 
 putNewThread :: SSAVariable -> SSAVariable -> NewStackClause -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putNewThread assignee stack nsClause exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (NewThread stack nsClause exec)]
+  basicBlockInstructions = (Assign [assignee] (NewThread stack nsClause exec)):(basicBlockInstructions block)
   }
 
 putComminst :: [SSAVariable] -> String -> [String] -> [UvmTypeDef] -> [FuncSig] -> [SSAVariable] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> BasicBlock -> BasicBlock
 putComminst assignee name flags types sigs args exec alive block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign assignee (Comminst name (toMaybe $ map Flag flags) (toMaybe types) (toMaybe sigs) (toMaybe args) exec (KeepAlive <$> alive))]
+  basicBlockInstructions = (Assign assignee (Comminst name (toMaybe $ map Flag flags) (toMaybe types) (toMaybe sigs) (toMaybe args) exec (KeepAlive <$> alive))):(basicBlockInstructions block)
   }
   where
     toMaybe :: [a] -> Maybe [a]
@@ -567,7 +569,7 @@ putComminst assignee name flags types sigs args exec alive block = block {
 
 putLoad :: SSAVariable -> Bool -> Maybe MemoryOrder -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putLoad assignee ptr memOrd var exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (Load ptr memOrd vType var  exec)]
+  basicBlockInstructions = (Assign [assignee] (Load ptr memOrd vType var  exec)):(basicBlockInstructions block)
   }
   where
     vType :: UvmTypeDef
@@ -578,7 +580,7 @@ putLoad assignee ptr memOrd var exec block = block {
 
 putStore :: Bool -> Maybe MemoryOrder -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putStore ptr memOrd loc newVal exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [] (Store ptr memOrd locType loc newVal exec)]
+  basicBlockInstructions = (Assign [] (Store ptr memOrd locType loc newVal exec)):(basicBlockInstructions block)
   }
   where
     locType :: UvmTypeDef
@@ -589,33 +591,33 @@ putStore ptr memOrd loc newVal exec block = block {
 
 putExtractValueS1 :: SSAVariable -> Int -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putExtractValueS1 assignee index opnd exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ExtractValueS (varType opnd) index opnd exec)]
+  basicBlockInstructions = (Assign [assignee] (ExtractValueS (varType opnd) index opnd exec)):(basicBlockInstructions block)
   }
 
 putInsertValueS :: SSAVariable -> Int -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putInsertValueS assignee index opnd newVal exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (InsertValueS (varType opnd) index newVal opnd exec)]
+  basicBlockInstructions = (Assign [assignee] (InsertValueS (varType opnd) index newVal opnd exec)):(basicBlockInstructions block)
   }
 
 putExtractValue :: SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putExtractValue assignee opnd index exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ExtractValue (varType opnd) (varType index) opnd index exec)]
+  basicBlockInstructions = (Assign [assignee] (ExtractValue (varType opnd) (varType index) opnd index exec)):(basicBlockInstructions block)
   }
 
 putInsertValue :: SSAVariable -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putInsertValue assignee opnd index newVal exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (InsertValue (varType opnd) (varType index) opnd index newVal exec)]
+  basicBlockInstructions = (Assign [assignee] (InsertValue (varType opnd) (varType index) opnd index newVal exec)):(basicBlockInstructions block)
   }
 
 putShuffleVector :: SSAVariable -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putShuffleVector assignee v1 v2 mask exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ShuffleVector (varType v1) (varType mask) v1 v2 mask exec)]
+  basicBlockInstructions = (Assign [assignee] (ShuffleVector (varType v1) (varType mask) v1 v2 mask exec)):(basicBlockInstructions block)
   }
 
 
 putGetIRef :: SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putGetIRef assignee opnd exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (GetIRef opndType opnd exec)]
+  basicBlockInstructions = (Assign [assignee] (GetIRef opndType opnd exec)):(basicBlockInstructions block)
   }
   where
     opndType :: UvmTypeDef
@@ -626,7 +628,7 @@ putGetIRef assignee opnd exec block = block {
 
 putGetFieldIRef :: SSAVariable -> Bool -> Int -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putGetFieldIRef assignee ptr index opnd exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (GetFieldIRef ptr opndType index opnd exec )]
+  basicBlockInstructions = (Assign [assignee] (GetFieldIRef ptr opndType index opnd exec )):(basicBlockInstructions block)
   }
   where
     opndType :: UvmTypeDef
@@ -637,7 +639,7 @@ putGetFieldIRef assignee ptr index opnd exec block = block {
 
 putGetElemIRef :: SSAVariable -> Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putGetElemIRef assignee ptr opnd index exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (GetElemIRef ptr opndType (varType index) opnd index exec)]
+  basicBlockInstructions = (Assign [assignee] (GetElemIRef ptr opndType (varType index) opnd index exec)):(basicBlockInstructions block)
   }
   where
     opndType :: UvmTypeDef
@@ -649,7 +651,7 @@ putGetElemIRef assignee ptr opnd index exec block = block {
 
 putShiftIRef :: SSAVariable -> Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putShiftIRef assignee ptr opnd offset exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (ShiftIRef ptr opndType (varType offset) opnd offset exec)]
+  basicBlockInstructions = (Assign [assignee] (ShiftIRef ptr opndType (varType offset) opnd offset exec)):(basicBlockInstructions block)
   }
   where
     opndType :: UvmTypeDef
@@ -661,7 +663,7 @@ putShiftIRef assignee ptr opnd offset exec block = block {
 
 putGetVarPartIRef :: SSAVariable -> Bool -> SSAVariable -> Maybe ExceptionClause -> BasicBlock -> BasicBlock
 putGetVarPartIRef assignee ptr opnd exec block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [assignee] (GetVarPartIRef ptr opndType opnd exec)]
+  basicBlockInstructions = (Assign [assignee] (GetVarPartIRef ptr opndType opnd exec)):(basicBlockInstructions block)
   }
   where
     opndType :: UvmTypeDef
@@ -673,20 +675,21 @@ putGetVarPartIRef assignee ptr opnd exec block = block {
 
 putComment :: String -> BasicBlock -> BasicBlock
 putComment str block = block {
-  basicBlockInstructions = (basicBlockInstructions block) ++ [Assign [] (Comment str)]
+  basicBlockInstructions = (Assign [] (Comment str)):(basicBlockInstructions block)
   }
 
-{-
-Code to insert loops and higher order structures into mu code
--}
+putIf :: Int -> Function -> Block -> [SSAVariable] -> [SSAVariable] -> SSAVariable ->  (BasicBlock -> BasicBlock) -> Builder Block
+putIf count func entry ctx rets cond prog = do
+  progBlock <- putBasicBlock (printf "progBlock%.5d" count) ctx Nothing func
+  contBlock <- putBasicBlock (printf "contBlock%.5d" count) ctx Nothing func
 
-{-
-eqOp :: SSAVariable -> SSAVariable -> BasicBlock -> Reader Int BasicBlock
-eqOp v1 v2 block = do
-  m <- ask
-  case M.lookup (varType v1) m of
-    Nothing -> error "type def not in known scope"
-    Just count -> putCmpOp EQ
-    where
-      assignee = SSAVariable Local (printf "var%.2d" int)
--}
+  withBasicBlock entry $
+    setTermInstBranch2 cond progBlock ctx contBlock ctx
+  
+  withBasicBlock progBlock $
+    putComment "If True Block" >>-
+    prog >>-
+    setTermInstBranch contBlock rets
+
+  return contBlock
+

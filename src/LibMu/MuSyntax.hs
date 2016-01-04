@@ -1,11 +1,12 @@
-{-# LANGUAGE NoImplicitPrelude #-}
+{-# LANGUAGE NoImplicitPrelude, FlexibleInstances #-}
 
 --An abstract syntax tree for Mu IR
 --This allows us to generate mu from haskell
 
 module LibMu.MuSyntax where 
 
-import Prelude (Eq(..), Ord(..), Show(..), String, Int, Bool, Maybe)
+import Prelude (Eq(..), Ord(..), Show(..), String, Int, Bool, Maybe(..))
+
 
 data CallConvention = Mu
                     | Foreign String
@@ -33,7 +34,8 @@ data UvmType = MuInt {intLen :: Int}
              | FuncRef {funcRefSig :: FuncSig}
              | UFuncPtr {ufuncPtrSig ::FuncSig}
                deriving (Eq, Ord)
-                        
+
+
 data SSAVariable = SSAVariable {
   varScope :: Scope,
   varID :: String,

@@ -4,7 +4,7 @@ module LibMu.PrettyPrint ( PrettyPrint(..) ) where
 import Prelude (
   Maybe(..), Show(..), String,
   unwords, map, otherwise, concat, 
-  unlines, error, undefined,
+  unlines, error, undefined, reverse,
   (==), ($), (.), (++))
 import Data.Char (toUpper)
 import LibMu.MuSyntax
@@ -234,7 +234,7 @@ instance PrettyPrint Declaration where
           printSig :: [UvmTypeDef] -> String
           printSig lst = "(" ++ (pp lst) ++ ")"
       FunctionDef name ver sig body -> do
-        pBody <- local (++"\t") (mapM ppFormat body)
+        pBody <- local (++"\t") (mapM ppFormat $ reverse body)
         return $ printf "%s.funcdef @%s VERSION %s <%s> {\n%s\t}" ind name ('%':ver) (pp sig) (unlines pBody)
       FunctionDecl name sig -> return $  printf "%s.funcdecl @%s = <%s>" ind name (pp sig)
       GlobalDef var uType -> return $ printf "%s.global %s <%s>" ind (pp var) (pp uType)
@@ -244,7 +244,7 @@ instance PrettyPrint BasicBlock where
   ppFormat (BasicBlock name params exec instructions term) = do
     _ <- error "This happened"
     ind <- ask
-    blocks <- local (++"\t") (printBlocks instructions)
+    blocks <- local (++"\t") (printBlocks $ reverse instructions)
     termInst <- local (++"\t") (ppFormat term)
     return $ printf "%s%s (%s)%s:\n%s%s" ind ('%':name) (printParams params) (printExec exec) (blocks) (termInst)
     where

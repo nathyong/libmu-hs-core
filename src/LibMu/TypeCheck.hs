@@ -11,7 +11,7 @@ module LibMu.TypeCheck (
 
 import Prelude (
   Bool(..), Eq(..), Int, String, Monad(..),
-  otherwise, const, undefined,
+  otherwise, const, undefined, reverse,
   not, map, all, and, length, zipWith,
   (&&), (||), (.), (<), (>), ($), (++), (!!))
 import LibMu.PrettyPrint (pp)
@@ -404,7 +404,7 @@ type Context = String
 checkBlockList :: [BasicBlock] -> Reader Context Log
 checkBlockList blocks = case blocks of
   [] -> return []        
-  x:xs -> (++) <$> ((++) <$> (local (++ (printf "%s -> " (basicBlockName x))) $ checkBody $ basicBlockInstructions x) <*> (checkExpr $ basicBlockTerminst x)) <*> (checkBlockList xs)
+  x:xs -> (++) <$> ((++) <$> (local (++ (printf "%s -> " (basicBlockName x))) $ checkBody $ reverse $ basicBlockInstructions x) <*> (checkExpr $ basicBlockTerminst x)) <*> (checkBlockList xs)
 
 checkExpr :: Expression -> Reader Context Log
 checkExpr expr
@@ -424,7 +424,7 @@ checkAst' :: Program -> Reader Context Log
 checkAst' (Program decl) = case decl of
     [] -> return []
     x@(FunctionDef _ _ _ _):xs -> do
-      (++) <$> (local (++(printf "Type Error Occurred: %s -> %s -> " (funcDefName x) (funcDefVersion x))) (checkBlockList $ funcDefBody x)) <*> (checkAst' (Program xs))
+      (++) <$> (local (++(printf "Type Error Occurred: %s -> %s -> " (funcDefName x) (funcDefVersion x))) (checkBlockList $ reverse $ funcDefBody x)) <*> (checkAst' (Program xs))
     _:xs -> checkAst' (Program xs)
 
 checkAst :: Program -> Log

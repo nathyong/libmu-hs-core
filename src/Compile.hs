@@ -75,7 +75,7 @@ putTokens func block count prog = case prog of
 
     let index = createVariable "index" i32
 
-    nxtBlock <- putBasicBlock (printf "block%.4d" count) [index] Nothing func
+    nxtBlock <- putBasicBlock (printf "block%.5d" count) [index] Nothing func
     
     case t of
       Increment -> do
@@ -129,7 +129,7 @@ putTokens func block count prog = case prog of
           putComment (printf "Loop Back : %d" (pred count)) >>-
           setTermInstBranch block [index]
         
-        contBlock <- putBasicBlock (printf "block%.4d" finCount) [index] Nothing func
+        contBlock <- putBasicBlock (printf "block%.5d" finCount) [index] Nothing func
 
         withBasicBlock contBlock $
           putComment (printf "Loop Continue : %d" (pred count))
