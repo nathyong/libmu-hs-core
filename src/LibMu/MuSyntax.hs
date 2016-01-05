@@ -5,8 +5,9 @@
 
 module LibMu.MuSyntax where 
 
-import Prelude (Eq(..), Ord(..), Show(..), String, Int, Bool, Maybe(..))
-
+import Prelude (Eq(..), Ord(..), Show(..), String, Int, Bool, Maybe(..), ($))
+import Text.Printf (printf)
+import Data.List (intersperse, concat, map)
 
 data CallConvention = Mu
                     | Foreign String
@@ -35,7 +36,27 @@ data UvmType = MuInt {intLen :: Int}
              | UFuncPtr {ufuncPtrSig ::FuncSig}
                deriving (Eq, Ord)
 
-
+instance Show UvmType where
+  show t = case t of
+    MuInt l -> printf "i%d" l
+    MuFloat -> "float"
+    MuDouble -> "double"
+    Ref t -> printf "ref.%s" (uvmTypeDefName t)
+    IRef t -> printf "iref.%s" (uvmTypeDefName t)
+    WeakRef t -> printf "weakref.%s" (uvmTypeDefName t)
+    UPtr t -> printf "uptr.%s" (uvmTypeDefName t)
+    Struct ts -> printf "struct.%s" (concat $ intersperse "." $ map uvmTypeDefName ts)
+    Array t l -> printf "array.%s.d" (uvmTypeDefName t) l
+    Hybrid ts t -> printf "hybrid.%s.%s" (concat $ intersperse "." $ map uvmTypeDefName ts) (uvmTypeDefName t)
+    Void -> "void"
+    ThreadRef -> "threadref"
+    StackRef -> "stackref"
+    FrameCursorRef -> "framecursorref"
+    TagRef64 -> "tagref64"
+    Vector t l -> printf "vector.%s.%d" (uvmTypeDefName t) l
+    FuncRef s -> printf "funcref.%s" (funcSigName s)
+    UFuncPtr s -> printf "ufuncptr.%s" (funcSigName s)
+      
 data SSAVariable = SSAVariable {
   varScope :: Scope,
   varID :: String,
