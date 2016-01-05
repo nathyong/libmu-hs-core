@@ -754,7 +754,45 @@ putIf count entry@(Block _ func) ctx rets cond prog = do
 
 
 {-
-putIfElse
+putIfElse: putIfElse will insert an if then else statment into the code. That is, two conditionally executed code blocks.
+e.g.
+entry(<@i32> %c, <@i32> %d):
+  ...
+  %cmp_res = SLE %a %b
+  //puIfElse generates code from here ...
+  branch2 cmp_res trueBlock [%a, %b, %c, %d] falseBlock [%a, %b, %c, %d]
+trueBlock(%a %b %c %d):
+  %ret = ADD <@i32> %a %c
+  Branch contBlock [%ret]
+falseBlock(%a %b %c %d):
+  %f = ADD <@i32> %b %d
+  Branch contBlock [%f]
+contBlock(%e):
+  //To here
+
+ - note how four contexts are passed to putIfElse. from the Right they are.
+    the variables passed to trueBlock & falseBlock (by entry and also taken as arguments)
+    the return variables of the trueBlock
+    the return variables of the falseBlock
+    the variables taken by contBlock
+
+  this level of customisation should be enough for most situations.
+
+  putIfElse takes two programs, the program to be inserted into the true block & the program to be inserted into the false block.
+
+example usage:
+withBasicBlock entry $
+  ...
+  putCmpOp EQ cmp_res a b >>-
+  putComment "putIf generates everything from here"
+
+cont <- putIfElse 2 entry [a,b,c,d] [ret] [f] [e] (
+  putBinOp Add ret a c Nothing) (
+
+withBasicBlock cont $
+  putComment "To here"
+
+note how although variables b & d are not used in trueBlock, they are passed to it anyway to reduce complexity
 -}
 
 putIfElse :: Int -> Block -> Context -> Context -> Context -> Context -> SSAVariable ->  (BasicBlock -> BasicBlock) -> (BasicBlock -> BasicBlock) -> Builder (Block, Block, Block)

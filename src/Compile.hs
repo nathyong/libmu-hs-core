@@ -11,6 +11,7 @@ import Text.Printf
 
 type BFTree = [Token]
 
+
 compile :: BFTree -> Builder BuilderState
 compile tree = do
   --i32 <- putTypeDef "i32" (MuInt 32)
@@ -85,7 +86,9 @@ putTokens func block count prog = case prog of
         withBasicBlock block $ 
           putComment "Increment" >>-
           putGetElemIRef arrElem False runner index Nothing >>-
-          putAtomicRMW ADD arrInc False SEQ_CST arrElem i32_1 Nothing >>-
+          putLoad arrOldVal False Nothing arrElem Nothing >>-
+          putBinOp Add arrNewVal arrOldVal i32_1 Nothing >>-
+          putStore False Nothing arrElem arrNewVal Nothing >>-
           setTermInstBranch nxtBlock [index]
 
         putTokens func nxtBlock (succ count) ts
