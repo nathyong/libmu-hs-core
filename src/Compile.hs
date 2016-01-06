@@ -14,18 +14,10 @@ type BFTree = [Token]
 
 compile :: BFTree -> Builder BuilderState
 compile tree = do
-  --i32 <- putTypeDef "i32" (MuInt 32)
-  --i1 <- putTypeDef "i1" (MuInt 1)
-  (_:_:_:i32:_, _:_:_:_:_:_:i32_0:i32_1:_,_)<- loadStdPrelude
+  (i1:_:_:i32:_, _:_:_:_:_:_:i32_0:i32_1:_,_)<- loadStdPrelude
   
-  
-  oirefi32 <- putTypeDef "irefi32" (IRef i32)
   arri32x3K <- putTypeDef "arri32x3K" (Array i32 30000)
-  iref_arri32x3K <- putTypeDef "iref_arri32x3K" (IRef arri32x3K)
   runner <- putGlobal "runner" arri32x3K
-
-  --i32_1 <- putConstant "i32_1" i32 "1"
-  --i32_0 <- putConstant "i32_0" i32 "0"
 
   char <- putTypeDef "char" (MuInt 8)
   addrType <- putTypeDef "AddrType" (MuInt 64)
@@ -42,21 +34,25 @@ compile tree = do
   main_sig <- putFuncSig "main.sig" [] []
   (main_v1, _) <- putFunction "main" "v1" main_sig
 
-  let index = createVariable "index" i32
+  entry <- putBasicBlock "entry" Nothing main_v1
+  block0 <- putBasicBlock "block0000" Nothing main_v1
 
-  entry <- putBasicBlock "entry" [] Nothing main_v1
-  block0 <- putBasicBlock "block0000" [index] Nothing main_v1
-
-  withBasicBlock entry $
+  updateBasicBlock entry $
     setTermInstBranch block0 [i32_0]
+
+  [index] <- updateBasicBlock block0 $
+    putParams [i32]
   
-  _ <- putTokens main_v1 block0 1 tree
+  (ind, ret) <- putTokens index block0 tree
+
+  updateBasicBlock ret $ do
+    setTermInstRet [ind]
   
   lift get
 
-putTokens :: Function -> Block -> Int -> [Token] -> Builder (Block, Int)
-putTokens func block count prog = case prog of
-  [] -> return (block, count)
+putTokens :: SSAVariable -> Block -> [Token] -> Builder (SSAVariable, Block)
+putTokens index block prog = case prog of
+  [] -> return (index, block)
   t:ts -> do
 
     [i32, i1, char, addrType, putchar_ptr, getchar_ptr] <- getTypedefs ["i32", "i1", "char", "AddrType", "putchar_ptr", "getchar_ptr"]
@@ -70,115 +66,86 @@ putTokens func block count prog = case prog of
     putchar_sig <- getFuncSig "putchar.sig"
     getchar_sig <- getFuncSig "getchar.sig"
     
-    irefi32 <- getTypedef "irefi32"
+    --irefi32 <- getTypedef "irefi32"
     
     runner <- getGlobal "runner"
-
-    let index = createVariable "index" i32
-
-    nxtBlock <- putBasicBlock (printf "block%.5d" count) [index] Nothing func
     
     case t of
       Increment -> do
-        let arrElem = createVariable "arrElem" irefi32
-            arrInc = createVariable "arrInc" i32
-            
-        withBasicBlock block $ 
-          putComment "Increment" >>-
-          putGetElemIRef arrElem False runner index Nothing >>-
-          putLoad arrOldVal False Nothing arrElem Nothing >>-
-          putBinOp Add arrNewVal arrOldVal i32_1 Nothing >>-
-          putStore False Nothing arrElem arrNewVal Nothing >>-
-          setTermInstBranch nxtBlock [index]
-
-        putTokens func nxtBlock (succ count) ts
-      Decrement -> do
-        let arrElem = createVariable "arrElem" irefi32
-            arrDec = createVariable "arrDec" i32
-            
-        withBasicBlock block $
-          putComment "Decrement" >>-
-          putGetElemIRef arrElem False runner index Nothing >>-
-          putAtomicRMW SUB arrDec False SEQ_CST arrElem i32_1 Nothing >>-
-          setTermInstBranch nxtBlock [index]
-
-        putTokens func nxtBlock (succ count) ts
-      PtrInc -> do
-        let indInc = createVariable "indInc" i32
-        
-        withBasicBlock block $
-          putComment "Ptr Increment" >>-
-          putBinOp Add indInc index i32_1 Nothing >>-
-          setTermInstBranch nxtBlock [indInc]
-
-        putTokens func nxtBlock (succ count) ts
+        updateBasicBlock block $ do
+          putComment "Increment"
+          arrElem <- putGetElemIRef False runner index Nothing
+          arrOldVal <- putLoad False Nothing arrElem Nothing
+          arrNewVal <- putBinOp Add arrOldVal i32_1 Nothing
+          putStore False Nothing arrElem arrNewVal Nothing
+          
+        putTokens index block ts
+      Decrement -> do          
+        updateBasicBlock block $ do
+          putComment "Decrement"
+          arrElem <- putGetElemIRef False runner index Nothing
+          arrOldVal <- putLoad False Nothing arrElem Nothing
+          arrNewVal <- putBinOp Sub arrOldVal i32_1 Nothing
+          putStore False Nothing arrElem arrNewVal Nothing
+          
+        putTokens index block ts
+      PtrInc -> do       
+        index' <- updateBasicBlock block $ do
+          putComment "Ptr Increment"
+          putBinOp Add index i32_1 Nothing
+          
+        putTokens index' block ts
       PtrDec -> do
-        let indDec = createVariable "indDec" i32
-        
-        withBasicBlock block $
-          putComment "Ptr Decrement" >>-
-          putBinOp Sub indDec index i32_1 Nothing >>-
-          setTermInstBranch nxtBlock [indDec]
-
-        putTokens func nxtBlock (succ count) ts
+        index' <- updateBasicBlock block $ do
+          putComment "Ptr Decrement"
+          putBinOp Sub index i32_1 Nothing
+          
+        putTokens index' block ts
       Loop prog -> do
-        let arrElem = createVariable "arrElem" irefi32
-            arrVal = createVariable "arrVal" i32
-            cmpRes = createVariable "cmpRes" i1
 
-        (finBlock, finCount) <- putTokens func nxtBlock (succ count) prog
-
-        withBasicBlock finBlock $
-          putComment (printf "Loop Back : %d" (pred count)) >>-
-          setTermInstBranch block [index]
+        n <- getVarID
         
-        contBlock <- putBasicBlock (printf "block%.5d" finCount) [index] Nothing func
-
-        withBasicBlock contBlock $
-          putComment (printf "Loop Continue : %d" (pred count))
+        (_, loop, cont, _, ind) <- putWhile [index] block (\loopBlock contBlock -> do
+          [ind] <- putParams [i32]
+          putComment (printf "Loop Begin : %d" n)
+          arrElem <- putGetElemIRef False runner index Nothing
+          arrVal <- putLoad False Nothing arrElem Nothing
+          cmpRes <- putCmpOp EQ arrVal i32_0
+          setTermInstBranch2 cmpRes loopBlock [ind] contBlock [ind]) (\condBlock -> do
+          [ind] <- putParams [i32]
+          setTermInstBranch condBlock [ind]
+          return ind) 
         
-        withBasicBlock block $
-          putComment (printf "Loop Begin : %d" (pred count)) >>-
-          putGetElemIRef arrElem False runner index Nothing >>- --iref i32
-          putLoad arrVal False Nothing arrElem Nothing >>-
-          putCmpOp EQ cmpRes arrVal i32_0 >>-
-          setTermInstBranch2 cmpRes contBlock [index] nxtBlock [index]
+        putTokens ind loop prog
 
-        putTokens func contBlock (succ finCount) ts
+        [indCont] <- updateBasicBlock cont $
+          putParams [i32]
+        
+        putTokens ind cont ts
 
       PutChar -> do
-        let callee = createVariable "callee" putchar_ptr
-            arrElem = createVariable "arrElem" irefi32
-            arrVal = createVariable "arrInc" i32
-            arrValChar = createVariable "arrValChar" char
-            
-        withBasicBlock block $
-          putComment "Put Char" >>-
-          putGetElemIRef arrElem False runner index Nothing >>-
-          putLoad arrVal False Nothing arrElem Nothing >>-
-          putConvOp TRUNC arrValChar char arrVal Nothing >>-
-          putConvOp PTRCAST callee putchar_ptr putchar_address Nothing >>-
-          putCCall [] Mu putchar_ptr putchar_sig putchar_address [arrValChar] Nothing Nothing >>-
-          setTermInstBranch nxtBlock [index]
+        updateBasicBlock block $ do
+          putComment "Put Char"
+          arrElem <- putGetElemIRef False runner index Nothing
+          arrVal <- putLoad False Nothing arrElem Nothing
+          arrValChar <- putConvOp TRUNC char arrVal Nothing
+          callee <- putConvOp PTRCAST putchar_ptr putchar_address Nothing
+          putCCall [] Mu putchar_ptr putchar_sig putchar_address [arrValChar] Nothing Nothing
           
-        putTokens func nxtBlock (succ count) ts
+        putTokens index block ts
         
       GetChar -> do
-        let callee = createVariable "callee" getchar_ptr
-            arrElem = createVariable "arrElem" irefi32
-            arrVal = createVariable "arrVal" i32
-            arrValChar = createVariable "arrValChar" char
+        let arrValChar = createVariable "arrValChar" char
             
-        withBasicBlock block $
-          putComment "Get Char" >>-
-          putConvOp PTRCAST callee putchar_ptr putchar_address Nothing >>-
-          putCCall [arrValChar] Mu putchar_ptr putchar_sig putchar_address [] Nothing Nothing >>-
-          putConvOp ZEXT arrVal i32 arrValChar Nothing >>-
-          putGetElemIRef arrElem False runner index Nothing >>-
-          putStore False Nothing arrElem arrVal Nothing >>-
-          setTermInstBranch nxtBlock [index]
+        updateBasicBlock block $ do
+          putComment "Get Char"
+          callee <- putConvOp PTRCAST putchar_ptr putchar_address Nothing
+          putCCall [arrValChar] Mu putchar_ptr putchar_sig putchar_address [] Nothing Nothing
+          arrVal <- putConvOp ZEXT i32 arrValChar Nothing
+          arrElem <- putGetElemIRef False runner index Nothing
+          putStore False Nothing arrElem arrVal Nothing
           
-        putTokens func nxtBlock (succ count) ts
+        putTokens index block ts
         
 compileProgram :: [Token] -> Either Error BuilderState
 compileProgram prog = runBuilder (compile prog) emptyBuilderState
