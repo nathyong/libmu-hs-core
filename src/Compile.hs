@@ -19,7 +19,7 @@ compile tree = do
   (_:_:_:i32:_, _:_:_:_:_:_:i32_0:i32_1:_,_)<- loadStdPrelude
   
   
-  irefi32 <- putTypeDef "irefi32" (IRef i32)
+  oirefi32 <- putTypeDef "irefi32" (IRef i32)
   arri32x3K <- putTypeDef "arri32x3K" (Array i32 30000)
   iref_arri32x3K <- putTypeDef "iref_arri32x3K" (IRef arri32x3K)
   runner <- putGlobal "runner" arri32x3K

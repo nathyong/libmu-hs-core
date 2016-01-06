@@ -3,7 +3,7 @@
 module LibMu.TypeCheck (
   Log,             -- [String]
   Typed(..),
-  retType,
+  retType,         -- :: Assign -> UvmType
   checkExpression, -- :: Expression -> Bool
   checkAssign,     -- :: Assign -> Bool
   checkAst         -- :: Program -> Log

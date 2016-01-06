@@ -1,6 +1,6 @@
 {-#LANGUAGE NoImplicitPrelude, FlexibleInstances#-}
 
-module Builder where
+module LibMu.Builder where
 
 import           Control.Monad.Trans.Class        (lift)
 import           Control.Monad.Trans.Except
@@ -290,7 +290,7 @@ instance Monoid BlockState where
 
 
 
-withBasicBlock :: String -> [SSAVariable] -> Maybe SSAVariable -> Function -> WriterT BlockState Builder () -> Builder BasicBlock
+withBasicBlock :: String -> [SSAVariable] -> Maybe SSAVariable -> Function -> WriterT BlockState Builder a -> Builder BasicBlock
 withBasicBlock name vars exec (Function func ver) prog = do
   let block = BasicBlock name vars exec [] (Return [])
   BlockState  (body, term) <- execWriterT prog
@@ -301,7 +301,8 @@ withBasicBlock name vars exec (Function func ver) prog = do
                       functionDefs = M.insert (fName ++ fVer) (FunctionDef fName fVer fSig (block':fBody)) (functionDefs pState)
                            })
   return block'
-  
+
+
 putBinOp :: BinaryOp -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putBinOp op v1@(SSAVariable _ _ opType) v2 exec = do
   n <- lift $ lift $ gets builderVarID
@@ -309,7 +310,6 @@ putBinOp op v1@(SSAVariable _ _ opType) v2 exec = do
   tell $ BlockState ([Assign [assignee] (BinaryOperation op opType v1 v2 exec)], Nothing)
   lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
-
 
 
 putConvOp :: ConvertOp -> UvmTypeDef -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
@@ -419,7 +419,6 @@ putCall assignee func sig args exec alive =
   tell $ BlockState ([Assign assignee (Call sig func args exec (KeepAlive <$> alive))], Nothing)
   
 
-
 putCCall :: [SSAVariable] ->  CallConvention -> UvmTypeDef -> FuncSig -> SSAVariable -> [SSAVariable] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
 putCCall assignee callConv t sig callee args exec alive = 
   tell $ BlockState ([Assign assignee (CCall callConv t sig callee args exec (KeepAlive <$> alive))], Nothing)
@@ -439,75 +438,78 @@ setTermInstBranch2 :: SSAVariable -> BasicBlock -> [SSAVariable] -> BasicBlock -
 setTermInstBranch2 cond (BasicBlock trueBlock _ _ _ _) trueVars (BasicBlock falseBlock _ _ _ _) falseVars =
   tell $ BlockState ([], Just $  Branch2 cond (DestinationClause trueBlock trueVars) (DestinationClause falseBlock falseVars))
   
-{-
-putWatchPoint :: [SSAVariable] -> SSAVariable -> Int -> [UvmTypeDef] -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> Maybe (Block, [SSAVariable]) -> Maybe [SSAVariable] -> WriterT BlockState Builder [SSAVariable]
-putWatchPoint assignee name wpid ts (Block dis _) disArgs (Block ena _) enaArgs wpexec alive block = block {
-    basicBlockInstructions = (Assign assignee (WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive))):(basicBlockInstructions block)
-    }
+
+putWatchPoint :: [SSAVariable] -> SSAVariable -> Int -> [UvmTypeDef] -> BasicBlock -> [SSAVariable] -> BasicBlock -> [SSAVariable] -> Maybe (BasicBlock, [SSAVariable]) -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
+putWatchPoint assignee name wpid ts (BasicBlock dis _ _ _ _) disArgs (BasicBlock ena _ _ _ _) enaArgs wpexec alive =
+  tell $ BlockState ([Assign assignee (WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive))], Nothing)
   where
     wp = case wpexec of
       Nothing -> Nothing
-      Just (Block wpBlock _, wpVars) -> Just $ WPExceptionClause $ DestinationClause wpBlock wpVars
+      Just (BasicBlock wpBlock _ _ _ _, wpVars) -> Just $ WPExceptionClause $ DestinationClause wpBlock wpVars
 
 
-putTrap :: [SSAVariable] -> SSAVariable -> [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder [SSAVariable]
-putTrap assignee name ts exec alive block = block {
-  basicBlockInstructions = (Assign assignee (Trap name ts exec (KeepAlive <$> alive))):(basicBlockInstructions block)
-  }
+putTrap :: [SSAVariable] -> SSAVariable -> [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
+putTrap assignee name ts exec alive =
+  tell $ BlockState  ([Assign assignee (Trap name ts exec (KeepAlive <$> alive))], Nothing)
 
 
-setTermInstWatchPoint :: SSAVariable -> Int -> [UvmTypeDef] -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> Maybe (Block, [SSAVariable]) -> Maybe [SSAVariable] -> WriterT BlockState Builder [SSAVariable]
-setTermInstWatchPoint name wpid ts (Block dis _) disArgs (Block ena _) enaArgs wpexec alive block = block {
-    basicBlockTerminst = WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive)
-    }
+setTermInstWatchPoint :: SSAVariable -> Int -> [UvmTypeDef] -> BasicBlock -> [SSAVariable] -> BasicBlock -> [SSAVariable] -> Maybe (BasicBlock, [SSAVariable]) -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
+setTermInstWatchPoint name wpid ts (BasicBlock dis _ _ _ _) disArgs (BasicBlock ena _ _ _ _) enaArgs wpexec alive =
+  tell $ BlockState ([], Just $ WatchPoint name wpid ts (DestinationClause dis disArgs) (DestinationClause ena enaArgs) wp (KeepAlive <$> alive))
   where
     wp = case wpexec of
       Nothing -> Nothing
-      Just (Block wpBlock _, wpVars) -> Just $ WPExceptionClause $ DestinationClause wpBlock wpVars
+      Just (BasicBlock wpBlock _ _ _ _, wpVars) -> Just $ WPExceptionClause $ DestinationClause wpBlock wpVars
 
 
-setTermInstTrap :: SSAVariable -> [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder [SSAVariable]
-setTermInstTrap name ts exec alive block = block {
-  basicBlockTerminst = Trap name ts exec (KeepAlive <$> alive)
-  }
+setTermInstTrap :: SSAVariable -> [UvmTypeDef] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
+setTermInstTrap name ts exec alive = 
+  tell $ BlockState ([], Just $ Trap name ts exec (KeepAlive <$> alive))
+  
 
-setTermInstWPBranch :: Int -> Block -> [SSAVariable] -> Block -> [SSAVariable] -> WriterT BlockState Builder [SSAVariable]
-setTermInstWPBranch wpid (Block disBlock _) disArgs (Block enaBlock _) enaArgs block = block {
-  basicBlockTerminst = WPBranch wpid (DestinationClause disBlock disArgs) (DestinationClause enaBlock enaArgs)
-  }
+setTermInstWPBranch :: Int -> BasicBlock -> [SSAVariable] -> BasicBlock -> [SSAVariable] -> WriterT BlockState Builder ()
+setTermInstWPBranch wpid (BasicBlock disBlock _ _ _ _) disArgs (BasicBlock enaBlock _ _ _ _) enaArgs =
+  tell $ BlockState ([], Just $ WPBranch wpid (DestinationClause disBlock disArgs) (DestinationClause enaBlock enaArgs))
+  
 
-setTermInstSwitch :: SSAVariable -> Block -> [SSAVariable] -> [(SSAVariable, Block, [SSAVariable])] -> WriterT BlockState Builder [SSAVariable]
-setTermInstSwitch cond (Block defBlock _) defArgs blocks block = block {
-  basicBlockTerminst = Switch (varType cond) cond (DestinationClause defBlock defArgs) (map toBlocks blocks)
-  }
+setTermInstSwitch :: SSAVariable -> BasicBlock -> [SSAVariable] -> [(SSAVariable, BasicBlock, [SSAVariable])] -> WriterT BlockState Builder ()
+setTermInstSwitch cond (BasicBlock defBlock _ _ _ _) defArgs blocks = 
+  tell $ BlockState ([], Just $ Switch (varType cond) cond (DestinationClause defBlock defArgs) (map toBlocks blocks))
   where
-    toBlocks :: (SSAVariable, Block, [SSAVariable]) -> (SSAVariable, DestinationClause)
-    toBlocks (cond, (Block block _), args) = (cond, DestinationClause block args)
+    toBlocks :: (SSAVariable, BasicBlock, [SSAVariable]) -> (SSAVariable, DestinationClause)
+    toBlocks (cond, (BasicBlock block _ _ _ _), args) = (cond, DestinationClause block args)
 
-setTermInstSwapStack :: SSAVariable -> CurStackClause -> NewStackClause -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder [SSAVariable]
-setTermInstSwapStack swappee csClause nsClause exec alive block = block {
-  basicBlockTerminst = SwapStack swappee csClause nsClause exec (KeepAlive <$> alive)
-  }
 
-putNewThread :: SSAVariable -> SSAVariable -> NewStackClause -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putNewThread assignee stack nsClause exec block = block {
-  basicBlockInstructions = (Assign [assignee] (NewThread stack nsClause exec)):(basicBlockInstructions block)
-  }
+setTermInstSwapStack :: SSAVariable -> CurStackClause -> NewStackClause -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
+setTermInstSwapStack swappee csClause nsClause exec alive = 
+  tell $ BlockState $ ([], Just $  SwapStack swappee csClause nsClause exec (KeepAlive <$> alive))
 
-putComminst :: [SSAVariable] -> String -> [String] -> [UvmTypeDef] -> [FuncSig] -> [SSAVariable] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder [SSAVariable]
-putComminst assignee name flags types sigs args exec alive block = block {
-  basicBlockInstructions = (Assign assignee (Comminst name (toMaybe $ map Flag flags) (toMaybe types) (toMaybe sigs) (toMaybe args) exec (KeepAlive <$> alive))):(basicBlockInstructions block)
-  }
+
+putNewThread :: SSAVariable -> NewStackClause -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putNewThread stack nsClause exec = do
+  n <- lift $ lift $ gets builderVarID
+  let assignee = createVariable (printf "v%d" n) threadref
+  tell $ BlockState ([Assign [assignee] (NewThread stack nsClause exec)], Nothing)
+  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
+  return assignee
+
+
+putComminst :: [SSAVariable] -> String -> [String] -> [UvmTypeDef] -> [FuncSig] -> [SSAVariable] -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
+putComminst assignee name flags types sigs args exec alive =
+  tell $ BlockState ([Assign assignee (Comminst name (toMaybe $ map Flag flags) (toMaybe types) (toMaybe sigs) (toMaybe args) exec (KeepAlive <$> alive))], Nothing)
   where
     toMaybe :: [a] -> Maybe [a]
     toMaybe lst = case lst of
       [] -> Nothing
       _  -> Just lst
 
-putLoad :: SSAVariable -> Bool -> Maybe MemoryOrder -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putLoad assignee ptr memOrd var exec block = block {
-  basicBlockInstructions = (Assign [assignee] (Load ptr memOrd vType var  exec)):(basicBlockInstructions block)
-  }
+
+putLoad :: Bool -> Maybe MemoryOrder -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putLoad ptr memOrd var exec = do
+  n <- lift $ lift $ gets builderVarID
+  let assignee = createVariable (printf "v%d" n) vType
+  tell $ BlockState ([Assign [assignee] (Load ptr memOrd vType var  exec)], Nothing)
+  return assignee
   where
     vType :: UvmTypeDef
     vType = case uvmTypeDefType $ varType var of
@@ -515,10 +517,10 @@ putLoad assignee ptr memOrd var exec block = block {
       UPtr t -> t
       _ -> undefined --varType var --errorful type, but let it fail elsewhere
 
-putStore :: Bool -> Maybe MemoryOrder -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putStore ptr memOrd loc newVal exec block = block {
-  basicBlockInstructions = (Assign [] (Store ptr memOrd locType loc newVal exec)):(basicBlockInstructions block)
-  }
+
+putStore :: Bool -> Maybe MemoryOrder -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder ()
+putStore ptr memOrd loc newVal exec = 
+  tell $ BlockState ([Assign [] (Store ptr memOrd locType loc newVal exec)], Nothing)
   where
     locType :: UvmTypeDef
     locType = case uvmTypeDefType $ varType loc of
@@ -526,36 +528,65 @@ putStore ptr memOrd loc newVal exec block = block {
       UPtr t -> t
       _ -> varType loc --errorful type, but let it fail elsewhere
 
-putExtractValueS1 :: SSAVariable -> Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putExtractValueS1 assignee index opnd exec block = block {
-  basicBlockInstructions = (Assign [assignee] (ExtractValueS (varType opnd) index opnd exec)):(basicBlockInstructions block)
-  }
 
-putInsertValueS :: SSAVariable -> Int -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putInsertValueS assignee index opnd newVal exec block = block {
-  basicBlockInstructions = (Assign [assignee] (InsertValueS (varType opnd) index newVal opnd exec)):(basicBlockInstructions block)
-  }
-
-putExtractValue :: SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putExtractValue assignee opnd index exec block = block {
-  basicBlockInstructions = (Assign [assignee] (ExtractValue (varType opnd) (varType index) opnd index exec)):(basicBlockInstructions block)
-  }
-
-putInsertValue :: SSAVariable -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putInsertValue assignee opnd index newVal exec block = block {
-  basicBlockInstructions = (Assign [assignee] (InsertValue (varType opnd) (varType index) opnd index newVal exec)):(basicBlockInstructions block)
-  }
-
-putShuffleVector :: SSAVariable -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putShuffleVector assignee v1 v2 mask exec block = block {
-  basicBlockInstructions = (Assign [assignee] (ShuffleVector (varType v1) (varType mask) v1 v2 mask exec)):(basicBlockInstructions block)
-  }
+putExtractValueS1 :: Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putExtractValueS1 index opnd exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation  = ExtractValueS (varType opnd) index opnd exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] (ExtractValueS (varType opnd) index opnd exec)], Nothing)
+  return assignee
 
 
-putGetIRef :: SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putGetIRef assignee opnd exec block = block {
-  basicBlockInstructions = (Assign [assignee] (GetIRef opndType opnd exec)):(basicBlockInstructions block)
-  }
+putInsertValueS :: Int -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putInsertValueS index opnd newVal exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = InsertValueS (varType opnd) index newVal opnd exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
+  
+
+putExtractValue :: SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putExtractValue opnd index exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = ExtractValue (varType opnd) (varType index) opnd index exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
+  
+
+putInsertValue :: SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putInsertValue opnd index newVal exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = InsertValue (varType opnd) (varType index) opnd index newVal exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState([Assign [assignee] operation], Nothing)
+  return assignee
+
+
+putShuffleVector :: SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putShuffleVector v1 v2 mask exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = ShuffleVector (varType v1) (varType mask) v1 v2 mask exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
+
+
+putGetIRef :: SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putGetIRef opnd exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = GetIRef opndType opnd exec
+  assT <- let retT = IRef opndType in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
   where
     opndType :: UvmTypeDef
     opndType = case uvmTypeDefType $ varType opnd of
@@ -563,33 +594,14 @@ putGetIRef assignee opnd exec block = block {
       _ -> varType opnd --errorful type, but let it fail elsewhere
 
 
-putGetFieldIRef :: SSAVariable -> Bool -> Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putGetFieldIRef assignee ptr index opnd exec block = block {
-  basicBlockInstructions = (Assign [assignee] (GetFieldIRpef ptr opndType index opnd exec )):(basicBlockInstructions block)
-  }
-  where
-    opndType :: UvmTypeDef
-    opndType = case uvmTypeDefType $ varType opnd of
-      IRef t -> t
-      UPtr t -> t
-      _ -> varType opnd --errorful type, but let it fail elsewhere
-
-putGetElemIRef :: SSAVariable -> Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putGetElemIRef assignee ptr opnd index exec block = block {
-  basicBlockInstructions = (Assign [assignee] (GetElemIRef ptr opndType (varType index) opnd index exec)):(basicBlockInstructions block)
-  }
-  where
-    opndType :: UvmTypeDef
-    opndType = case uvmTypeDefType $ varType opnd of
-      IRef t -> t
-      UPtr t -> t
-      _ -> varType opnd --errorful type, but let it fail elsewhere
-
-
-putShiftIRef :: SSAVariable -> Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putShiftIRef assignee ptr opnd offset exec block = block {
-  basicBlockInstructions = (Assign [assignee] (ShiftIRef ptr opndType (varType offset) opnd offset exec)):(basicBlockInstructions block)
-  }
+putGetFieldIRef :: Bool -> Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putGetFieldIRef ptr index opnd exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = GetFieldIRef ptr opndType index opnd exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
   where
     opndType :: UvmTypeDef
     opndType = case uvmTypeDefType $ varType opnd of
@@ -598,10 +610,14 @@ putShiftIRef assignee ptr opnd offset exec block = block {
       _ -> varType opnd --errorful type, but let it fail elsewhere
 
 
-putGetVarPartIRef :: SSAVariable -> Bool -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder [SSAVariable]
-putGetVarPartIRef assignee ptr opnd exec block = block {
-  basicBlockInstructions = (Assign [assignee] (GetVarPartIRef ptr opndType opnd exec)):(basicBlockInstructions block)
-  }
+putGetElemIRef :: Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putGetElemIRef ptr opnd index exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = GetElemIRef ptr opndType (varType index) opnd index exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
   where
     opndType :: UvmTypeDef
     opndType = case uvmTypeDefType $ varType opnd of
@@ -610,8 +626,37 @@ putGetVarPartIRef assignee ptr opnd exec block = block {
       _ -> varType opnd --errorful type, but let it fail elsewhere
 
 
-putComment :: String -> WriterT BlockState Builder [SSAVariable]
-putComment str block = block {
-  basicBlockInstructions = (Assign [] (Comment str)):(basicBlockInstructions block)
-  }
--}
+putShiftIRef :: Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putShiftIRef ptr opnd offset exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = ShiftIRef ptr opndType (varType offset) opnd offset exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
+  where
+    opndType :: UvmTypeDef
+    opndType = case uvmTypeDefType $ varType opnd of
+      IRef t -> t
+      UPtr t -> t
+      _ -> varType opnd --errorful type, but let it fail elsewhere
+
+putGetVarPartIRef :: Bool -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putGetVarPartIRef ptr opnd exec = do
+  n <- lift $ lift $ gets builderVarID
+  let operation = GetVarPartIRef ptr opndType opnd exec
+  assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
+  let assignee = createVariable (printf "v%d" n) assT
+  tell $ BlockState ([Assign [assignee] operation], Nothing)
+  return assignee
+  where
+    opndType :: UvmTypeDef
+    opndType = case uvmTypeDefType $ varType opnd of
+      IRef t -> t
+      UPtr t -> t
+      _ -> varType opnd --errorful type, but let it fail elsewhere
+    
+
+putComment :: String -> WriterT BlockState Builder ()
+putComment str = 
+  tell $ BlockState ([Assign [] (Comment str)], Nothing)
