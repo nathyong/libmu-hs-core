@@ -1,11 +1,11 @@
-module TestPP where
+module TestPP (ppSpec) where
 
 import Test.Hspec
 import LibMu.PrettyPrint
 import LibMu.MuSyntax
 
 i8, i16, i32, i64, float, double, some_struct, some_array, ref1, ref2, ref3, iref1, iref2,
-  iref3, weakref1, weakref2, weakref3:: UvmTypeDef                                        
+  iref3 :: UvmTypeDef                                        
 i8 = UvmTypeDef "i8" (MuInt 8)
 i16 = UvmTypeDef "i16" (MuInt 16)
 i32 = UvmTypeDef "i32" (MuInt 32)
@@ -20,9 +20,6 @@ ref3 = UvmTypeDef "ref3" (Ref some_array)
 iref1 = UvmTypeDef "iref1" (IRef i32)
 iref2 = UvmTypeDef "iref2" (IRef some_struct)
 iref3 = UvmTypeDef "iref3" (IRef some_array)
-weakref1 = UvmTypeDef "weakref1" (WeakRef i32)
-weakref2 = UvmTypeDef "weakref2" (WeakRef some_struct)
-weakref3 = UvmTypeDef "weakref3" (WeakRef some_array)
 
 addi32Sig :: FuncSig
 addi32Sig = FuncSig "addi32sig" [i32, i32] [i32]
@@ -43,8 +40,8 @@ addExpr = BinaryOperation Add i32 a c Nothing
 addBasicBlock :: BasicBlock
 addBasicBlock = BasicBlock "entry" [a, c] Nothing [Assign [b] addExpr] (Return [b])
 
-main :: IO()
-main = hspec $ do
+ppSpec :: IO ()
+ppSpec = hspec $ do
   describe "pp UvmTypeDef Instance" $ do
     --Test UvmTypeDef instance
     it "correctly displays a type definition" $

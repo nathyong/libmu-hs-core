@@ -19,7 +19,6 @@ import LibMu.MuSyntax
 import Control.Monad.Trans.Reader (runReader, Reader, ask, local)
 import Control.Applicative ((<*>), (<$>))
 import Text.Printf (printf)
-import System.IO.Unsafe (unsafePerformIO)
 
 class Typed a where
   --Type Equivalent (infix)
@@ -355,8 +354,8 @@ retType expr = case expr of
   CCall _ _ sig _ _ _ _ -> map uvmTypeDefType $ funcSigReturnType sig
   Branch1 _ -> []
   Branch2 _ _ _ -> []
-  WatchPoint _ _ ts _ _ _ _ -> map uvmTypeDefType ts
-  Trap _ ts _ _ -> map uvmTypeDefType ts
+  WatchPoint _ _ types _ _ _ _ -> map uvmTypeDefType types
+  Trap _ types _ _ -> map uvmTypeDefType types
   WPBranch _ _ _ -> []
   Switch _ _ _ _ -> []
   SwapStack _ _ _ _ _ -> []
@@ -372,14 +371,15 @@ retType expr = case expr of
     _ -> []
   InsertValue t  _ _ _ _ _ -> [uvmTypeDefType t]
   ShuffleVector t1 t2 _ _ _ _ -> case (uvmTypeDefType t1, uvmTypeDefType t2) of
-    (Vector t1 _, Vector _ len) -> [Vector t1 len]
+    (Vector vecT1 _, Vector _ len) -> [Vector vecT1 len]
     _ -> []
   GetIRef t _ _ -> [IRef t]
   GetFieldIRef ptr t index _ _ -> case (ptr, uvmTypeDefType t) of
-    (True, Struct ts) -> [UPtr $ ts !! index]
-    (False, Struct ts) -> [IRef $ ts !! index]
-    (True, Hybrid ts _) -> [UPtr $ ts !! index]
-    (False, Hybrid ts _) -> [IRef $ ts !! index]
+    (True, Struct types) -> [UPtr $ types !! index]
+    (False, Struct types) -> [IRef $ types !! index]
+    (True, Hybrid types _) -> [UPtr $ types !! index]
+    (False, Hybrid types _) -> [IRef $ types !! index]
+    _ -> []
   GetElemIRef ptr t _ _ _ _ -> case (ptr, uvmTypeDefType t) of
     (True, Array vecType _) -> [UPtr vecType]
     (False, Array vecType _) -> [IRef vecType]
@@ -394,7 +394,7 @@ retType expr = case expr of
   Comment _ -> []
 
 checkAssign :: Assign -> Bool
-checkAssign ass@(Assign vars expr) = case expr of
+checkAssign (Assign vars expr) = case expr of
   Comminst _ _ _ _ _ _ _ -> True
   _ -> (checkExpression expr) && (map (uvmTypeDefType . varType) vars #= retType expr)
   

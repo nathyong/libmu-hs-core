@@ -37,7 +37,7 @@ data UvmType = MuInt {intLen :: Int}
                deriving (Eq, Ord)
 
 instance Show UvmType where
-  show t = case t of
+  show uType= case uType of
     MuInt l -> printf "i%d" l
     MuFloat -> "float"
     MuDouble -> "double"

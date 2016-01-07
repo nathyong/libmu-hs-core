@@ -66,6 +66,8 @@ module LibMu.Builder (
   setTermInstBranch,
   setTermInstBranch2,
   putWatchPoint,
+  setTermInstWatchPoint,
+  putTrap,
   setTermInstTrap,
   setTermInstWPBranch,
   setTermInstSwitch,
@@ -74,10 +76,18 @@ module LibMu.Builder (
   putComminst,
   putLoad,
   putStore,
-
-  putComment,
-
+  putExtractValueS,
+  putInsertValueS,
+  putExtractValue,
+  putInsertValue,
+  putShuffleVector,
+  putGetIRef,
+  putGetFieldIRef,
   putGetElemIRef,
+  putShiftIRef,
+  putGetVarPartIRef,
+  
+  putComment,
 
   putIf,
   putIfElse,
@@ -116,24 +126,19 @@ module LibMu.Builder (
   loadPrelude
                      ) where
 
-import           Control.Monad.Trans.Class        (lift)
-import           Control.Monad.Trans.Except       (ExceptT, throwE, runExceptT)
+import           Control.Monad.Trans.Class (lift)
+import           Control.Monad.Trans.Except (ExceptT, throwE, runExceptT)
 import           Control.Monad.Trans.State.Strict (State, get, gets, modify, evalState)
-import           LibMu.PrettyPrint                (PrettyPrint (..))
+import           Control.Monad.Trans.Writer.Strict (WriterT, runWriterT, tell)
+import qualified Data.Map.Strict as M
+import           LibMu.MuPrelude
+import           LibMu.MuSyntax
+import           LibMu.PrettyPrint (PrettyPrint (..))
 import           LibMu.TypeCheck                  (Log, checkAssign, checkAst,
                                                    checkExpression, retType)
-import           Prelude                          hiding (EQ)
-import           Control.Monad                    (void)
-import qualified Data.Map.Strict                  as M
-import           Text.Printf                      (printf)
+import           Prelude hiding (EQ)
+import           Text.Printf (printf)
 
-import           LibMu.MuSyntax
-import           LibMu.PrettyPrint                (PrettyPrint(..))
-import           LibMu.TypeCheck                  (checkAst, retType)
-import           LibMu.MuPrelude
-import           Control.Monad.Trans.Writer.Strict(WriterT, execWriterT, runWriterT, tell)
-import           Data.Monoid                      (Monoid(..))
-import           Data.Maybe                       (fromJust)
 
 --Holds Program state for lookup by name
 data BuilderState = BuilderState {
@@ -149,8 +154,8 @@ data BuilderState = BuilderState {
   functionDefOrd :: [String] -- hold the order in which functions were declared
   }
 
-data Function = Function {fnName :: String, fnVer :: String}
-data Block = Block {bName :: String, bFunc :: Function}
+data Function = Function String  String
+data Block = Block String Function
 
 instance PrettyPrint (Either Error BuilderState) where
   ppFormat e = case e of
@@ -322,12 +327,12 @@ containsFuncDef name ver = do
 
 putFuncSig :: String -> [UvmTypeDef] -> [UvmTypeDef] -> Builder FuncSig
 putFuncSig name args ret = do
-  let funcSig = FuncSig name args ret
+  let functionSig = FuncSig name args ret
   lift $ modify (\pState ->
                   pState {
-                    funcsigs = M.insert name (FunctionSignature funcSig) (funcsigs pState)
+                    funcsigs = M.insert name (FunctionSignature functionSig) (funcsigs pState)
                     })
-  return funcSig
+  return functionSig
 
 putFunction :: String -> String -> FuncSig -> Builder (Function, SSAVariable)
 putFunction name ver sig = do
@@ -398,11 +403,11 @@ instance Monoid BlockState where
   mempty = BlockState ([], [], Just $ Return [])
   mappend (BlockState (b1, p1, t1)) (BlockState (b2, p2, t2)) = case t2 of
     Nothing -> BlockState (b2 `mappend` b1, p1 `mappend` p2, t1)
-    Just term -> BlockState (b2 `mappend` b1, p1 `mappend` p2, t2)
+    _ -> BlockState (b2 `mappend` b1, p1 `mappend` p2, t2)
 
 
 withBasicBlock :: String -> Maybe SSAVariable -> Function -> WriterT BlockState Builder a -> Builder (Block, a)
-withBasicBlock name exec func@(Function fName fVer) prog = do
+withBasicBlock name exec func prog = do
   --let block = BasicBlock name [] exec [] (Return [])
   block <- putBasicBlock name exec func
   res <- updateBasicBlock block prog
@@ -429,9 +434,9 @@ updateBasicBlock block@(Block name (Function func ver)) prog = do
       x:xs
         | basicBlockName x == name -> return $ blk:xs
         | otherwise -> (x:) <$> (editBlock blk xs)
-      [] -> throwE $ printf "could not find block %s" (basicBlockName blk)
+      [] -> throwE $ printf "could not find block %s" name
     getBlock :: Block -> [BasicBlock] -> Builder BasicBlock
-    getBlock blk@(Block name _) lst = case lst of
+    getBlock blk lst = case lst of
       x:xs
         | name == basicBlockName x -> return x
         | otherwise -> getBlock blk xs
@@ -622,7 +627,7 @@ setTermInstSwitch cond (BasicBlock defBlock _ _ _ _) defArgs blocks =
   tell $ BlockState ([], [], Just $ Switch (varType cond) cond (DestinationClause defBlock defArgs) (map toBlocks blocks))
   where
     toBlocks :: (SSAVariable, BasicBlock, [SSAVariable]) -> (SSAVariable, DestinationClause)
-    toBlocks (cond, (BasicBlock block _ _ _ _), args) = (cond, DestinationClause block args)
+    toBlocks (condition, (BasicBlock block _ _ _ _), args) = (condition, DestinationClause block args)
 
 
 setTermInstSwapStack :: SSAVariable -> CurStackClause -> NewStackClause -> Maybe ExceptionClause -> Maybe [SSAVariable] -> WriterT BlockState Builder ()
@@ -675,8 +680,8 @@ putStore ptr memOrd loc newVal exec =
       _ -> varType loc --errorful type, but let it fail elsewhere
 
 
-putExtractValueS1 :: Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
-putExtractValueS1 index opnd exec = do
+putExtractValueS :: Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
+putExtractValueS index opnd exec = do
   n <- lift $ lift $ gets builderVarID
   let operation  = ExtractValueS (varType opnd) index opnd exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT

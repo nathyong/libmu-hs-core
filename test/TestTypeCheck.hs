@@ -1,12 +1,13 @@
 {-#LANGUAGE NoImplicitPrelude#-}
 
+module TestTypeCheck (typeCheckSpec) where
+
 import Prelude (
   IO, Maybe(..), Bool(..),
   undefined,
   ($))
 import Test.Hspec
 
-import LibMu.PrettyPrint
 import LibMu.MuSyntax
 import LibMu.TypeCheck -- (checkExpression, checkAssign, checkAst)
 
@@ -56,7 +57,7 @@ addSig = FuncSig "add" [i32, i32] [i32]
 addProg :: Program
 addProg = Program [GlobalDef a_i32 i32, FunctionDef "add" "v1" addSig [BasicBlock "entry" [a_i32, a_i32] Nothing [Assign [ret] (BinaryOperation Add i32 a_i64 a_i32 Nothing)] (Return [ret])]]
 
-a_void, b_void, a_refvoid, b_refvoid, a_reffloat, a_ireffloat, a_irefvoid, b_irefvoid, a_weakrefvoid, b_weakrefvoid, a_funcrefadd, a_uptrvoid, a_ufuncptradd, a_irefi32, a_refi32, a_uptri32, a_sref :: SSAVariable
+a_void, b_void, a_refvoid, b_refvoid, a_reffloat, a_ireffloat, a_irefvoid, b_irefvoid, a_weakrefvoid, b_weakrefvoid, a_funcrefadd, a_uptrvoid, a_ufuncptradd, a_irefi32, a_refi32, a_uptri32, a_sref, a_uptrfloat :: SSAVariable
 a_void = SSAVariable Global "a_void" void
 b_void = SSAVariable Global "b_void" void
 a_refvoid = SSAVariable Global "a_refvoid" refvoid
@@ -91,7 +92,7 @@ b_float = SSAVariable Global "b_float" float
 a_double = SSAVariable Global "a_double" double
 b_double = SSAVariable Global "b_double" double
 
-a_i32x4, b_i32x4, a_floatx4, b_floatx4, a_doublex2, b_doublex2, a_structi32float, a_arrayi32x4, a_uptr_structi32float, a_iref_structi32float, a_iref_hybrid_i32_float, a_uptr_hybrid_i32_float, a_iref_arrayi32x4, a_uptr_arrayi32x4, a_ref_hybrid_i32_float :: SSAVariable
+a_i32x4, b_i32x4, a_floatx4, b_floatx4, a_doublex2, a_doublex4, b_doublex2, a_structi32float, a_arrayi32x4, a_uptr_structi32float, a_iref_structi32float, a_iref_hybrid_i32_float, a_uptr_hybrid_i32_float, a_iref_arrayi32x4, a_uptr_arrayi32x4, a_ref_hybrid_i32_float :: SSAVariable
 a_i32x4 = SSAVariable Global "a_i32x4" i32x4
 b_i32x4 = SSAVariable Global "b_i32x4" i32x4
 a_floatx4 = SSAVariable Global "a_floatx4" floatx4
@@ -109,8 +110,8 @@ a_uptr_arrayi32x4 = SSAVariable Global "a_uptr_arrayi32x4" uptr_arrayi32x4
 a_iref_arrayi32x4 = SSAVariable Global "a_iref_arrayi32x4" iref_arrayi32x4
 a_ref_hybrid_i32_float = SSAVariable Global "a_ref_hybrid_i32_float" ref_hybrid_i32_float
 
-main :: IO ()
-main = hspec $ do
+typeCheckSpec :: IO ()
+typeCheckSpec = hspec $ do
 
   describe "checkExpression : BinaryOperation : Add" $ do
     it "correctly returns True for i32 arguments" $

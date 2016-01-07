@@ -59,5 +59,5 @@ main = do
                       putStrLn $ unlines $ checkBuilder bs
                       writeFile output $ pp bs
                     else writeFile output $ pp bs
-                      
+            _ -> error "command line parse error. See CommandLine.hs for details"
     Right _ -> error "Argument error, see source code"

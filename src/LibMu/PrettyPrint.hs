@@ -3,9 +3,9 @@ module LibMu.PrettyPrint ( PrettyPrint(..) ) where
 
 import Prelude (
   Maybe(..), Show(..), String,
-  unwords, map, otherwise, concat, 
-  unlines, error, undefined, reverse,
-  (==), ($), (.), (++))
+  unwords, map, concat, 
+  unlines, error, reverse,
+  ($), (.), (++))
 import Data.Char (toUpper)
 import LibMu.MuSyntax
 import Text.Printf (printf)

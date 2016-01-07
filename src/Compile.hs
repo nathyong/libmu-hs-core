@@ -14,22 +14,22 @@ type BFTree = [Token]
 
 compile :: BFTree -> Builder BuilderState
 compile tree = do
-  (i1:_:_:i32:_, _:_:_:_:_:_:i32_0:i32_1:_,_)<- loadStdPrelude
+  (_:_:_:i32:_, _:_:_:_:_:_:i32_0:_:_,_)<- loadStdPrelude
   
   arri32x3K <- putTypeDef "arri32x3K" (Array i32 30000)
-  runner <- putGlobal "runner" arri32x3K
+  _ <- putGlobal "runner" arri32x3K
 
   char <- putTypeDef "char" (MuInt 8)
   addrType <- putTypeDef "AddrType" (MuInt 64)
 
-  getchar_address <- putConstant "getchar_address" addrType "0x400490"
-  putchar_address <- putConstant "putchar_address" addrType "0x400460"
+  _ <- putConstant "getchar_address" addrType "0x400490"
+  _ <- putConstant "putchar_address" addrType "0x400460"
 
   getchar_sig <- putFuncSig "getchar.sig" [] [char]
   putchar_sig <- putFuncSig "putchar.sig" [char] []
 
-  getchar_ptr <- putTypeDef "getchar_ptr" (UFuncPtr getchar_sig)
-  putchar_ptr <- putTypeDef "putchar_ptr" (UFuncPtr putchar_sig)
+  _ <- putTypeDef "getchar_ptr" (UFuncPtr getchar_sig)
+  _ <- putTypeDef "putchar_ptr" (UFuncPtr putchar_sig)
 
   main_sig <- putFuncSig "main.sig" [] []
   (main_v1, _) <- putFunction "main" "v1" main_sig
@@ -55,7 +55,7 @@ putTokens index block prog = case prog of
   [] -> return (index, block)
   t:ts -> do
 
-    [i32, i1, char, addrType, putchar_ptr, getchar_ptr] <- getTypedefs ["i32", "i1", "char", "AddrType", "putchar_ptr", "getchar_ptr"]
+    [i32, char, putchar_ptr, getchar_ptr] <- getTypedefs ["i32", "char", "putchar_ptr", "getchar_ptr"]
     
     i32_1 <- getConstant "i32_1"
     i32_0 <- getConstant "i32_0"
@@ -101,7 +101,7 @@ putTokens index block prog = case prog of
           putBinOp Sub index i32_1 Nothing
           
         putTokens index' block ts
-      Loop prog -> do
+      Loop in_prog -> do
 
         n <- getVarID
         
@@ -116,12 +116,12 @@ putTokens index block prog = case prog of
           setTermInstBranch condBlock [ind]
           return ind) 
         
-        putTokens ind loop prog
+        _ <- putTokens ind loop in_prog
 
         [indCont] <- updateBasicBlock cont $
           putParams [i32]
         
-        putTokens ind cont ts
+        putTokens indCont cont ts
 
       PutChar -> do
         updateBasicBlock block $ do
@@ -139,8 +139,8 @@ putTokens index block prog = case prog of
             
         updateBasicBlock block $ do
           putComment "Get Char"
-          callee <- putConvOp PTRCAST putchar_ptr putchar_address Nothing
-          putCCall [arrValChar] Mu putchar_ptr putchar_sig putchar_address [] Nothing Nothing
+          callee <- putConvOp PTRCAST getchar_ptr getchar_address Nothing
+          putCCall [arrValChar] Mu getchar_ptr getchar_sig getchar_address [] Nothing Nothing
           arrVal <- putConvOp ZEXT i32 arrValChar Nothing
           arrElem <- putGetElemIRef False runner index Nothing
           putStore False Nothing arrElem arrVal Nothing
