@@ -111,18 +111,22 @@ putTokens index block prog = case prog of
           arrElem <- putGetElemIRef False runner index Nothing
           arrVal <- putLoad False Nothing arrElem Nothing
           cmpRes <- putCmpOp EQ arrVal i32_0
-          setTermInstBranch2 cmpRes loopBlock [ind] contBlock [ind]) (\condBlock -> do
+          setTermInstBranch2 cmpRes loopBlock [ind] contBlock [ind])
+                                   (\_ -> do
           [ind] <- putParams [i32]
-          setTermInstBranch condBlock [ind]
-          return ind) 
+          return ind
+          )
         
-        _ <- putTokens ind loop in_prog
-
+        (loopInd, loopFin) <- putTokens ind loop in_prog
+        
+        updateBasicBlock loopFin $
+          setTermInstBranch cont [loopInd]
+ 
         [indCont] <- updateBasicBlock cont $
           putParams [i32]
         
         putTokens indCont cont ts
-
+        
       PutChar -> do
         updateBasicBlock block $ do
           putComment "Put Char"

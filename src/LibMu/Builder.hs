@@ -145,13 +145,11 @@ data BuilderState = BuilderState {
   builderVarID   :: Int,
   constants      :: M.Map String Declaration,
   typedefs       :: M.Map String Declaration,
-  typedefOrd     :: [String], -- hold the order in which typedefs were declared
   funcsigs       :: M.Map String Declaration,
   funcdecls      :: M.Map String Declaration,
   globals        :: M.Map String Declaration,
   exposes        :: M.Map String Declaration,
-  functionDefs   :: M.Map String Declaration,
-  functionDefOrd :: [String] -- hold the order in which functions were declared
+  functionDefs   :: M.Map String Declaration
   }
 
 data Function = Function String  String
@@ -166,29 +164,21 @@ instance PrettyPrint BuilderState where
   ppFormat = ppFormat . flatten
 
 flatten :: BuilderState -> Program
-flatten (BuilderState _ cons tds tdOrd fs fdecl gl ex fdef fdefOrd) =
-    case (,) <$> extractOrdered tds tdOrd <*> extractOrdered fdef fdefOrd of
-      Nothing -> error "Failed to order typedefs appropriatly"
-      Just (tdLst, fdLst) -> Program $ concat [
-        tdLst,
+flatten (BuilderState _ cons tds fs fdecl gl ex fdefs) = Program $ concat [
+        M.elems tds,
         M.elems gl,
         M.elems cons,
         M.elems fdecl,
         M.elems fs,
         M.elems ex,
-        fdLst
+        M.elems fdefs
         ]
-
-extractOrdered :: (Ord k) => M.Map k v -> [k] -> Maybe [v]
-extractOrdered m mask = case mask of
-  x:xs -> (:) <$> (M.lookup x m) <*> (extractOrdered m xs)
-  [] -> pure []
 
 checkBuilder :: BuilderState -> Log
 checkBuilder = checkAst . flatten
 
 emptyBuilderState :: BuilderState
-emptyBuilderState = BuilderState 0 M.empty M.empty [] M.empty M.empty M.empty M.empty M.empty []
+emptyBuilderState = BuilderState 0 M.empty M.empty M.empty M.empty M.empty M.empty M.empty
 
 type Error = String
 type Builder = ExceptT Error (State BuilderState)
@@ -204,7 +194,6 @@ loadPrelude (types, consts, sigs) = do
   lift $ modify (\pState ->
                   pState {
                     typedefs = M.union (typedefs pState) (M.fromList tPrelude),
-                    typedefOrd = (typedefOrd pState) ++ tNames,
                     constants = M.union (constants pState) (M.fromList cPrelude),
                     funcsigs = M.union (funcsigs pState) (M.fromList sPrelude)
                     }
@@ -338,8 +327,7 @@ putFunction :: String -> String -> FuncSig -> Builder (Function, SSAVariable)
 putFunction name ver sig = do
   lift $ modify $ (\pState ->
                     pState {
-                      functionDefs = M.insert (name ++ ver) (FunctionDef name ver sig []) (functionDefs pState),
-                      functionDefOrd = (functionDefOrd pState) ++ [name ++ ver]
+                      functionDefs = M.insert (name ++ ver) (FunctionDef name ver sig []) (functionDefs pState)
                            })
   let funcRef = SSAVariable Global name (UvmTypeDef (printf "%s_ref" name) (FuncRef sig))
   return $ (Function name ver, funcRef)
@@ -358,8 +346,7 @@ putTypeDef name uvmType = do
   let tDef = UvmTypeDef name uvmType
   lift $ modify (\pState ->
                   pState {
-                    typedefs = M.insert name (Typedef tDef) (typedefs pState),
-                    typedefOrd = (typedefOrd pState) ++ [name]
+                    typedefs = M.insert name (Typedef tDef) (typedefs pState)                    
                     })
   return tDef
 
@@ -376,6 +363,7 @@ putGlobal name dType = do
                     globals = M.insert name (GlobalDef var dType) (globals pState)
                     })
   return var
+
 
 createVariable :: String -> UvmTypeDef -> SSAVariable
 createVariable name typeVal = SSAVariable Local name typeVal
@@ -400,7 +388,7 @@ putBasicBlock name exec fn@(Function func ver) = do
 newtype BlockState = BlockState ([Assign], [SSAVariable], Maybe Expression)
 
 instance Monoid BlockState where
-  mempty = BlockState ([], [], Just $ Return [])
+  mempty = BlockState ([], [], Nothing)
   mappend (BlockState (b1, p1, t1)) (BlockState (b2, p2, t2)) = case t2 of
     Nothing -> BlockState (b2 `mappend` b1, p1 `mappend` p2, t1)
     _ -> BlockState (b2 `mappend` b1, p1 `mappend` p2, t2)
@@ -854,7 +842,7 @@ putIfElse trueCtx falseCtx cond entry@(Block _ func) trueProg falseProg = do
 
   tRet <- updateBasicBlock trueBlock $ trueProg contBlock
   fRet <- updateBasicBlock falseBlock $ falseProg contBlock
-
+  
   return (trueBlock, falseBlock, contBlock, tRet, fRet)
   
 putWhile :: Context -> Block -> (Block -> Block -> WriterT BlockState Builder a) -> (Block -> WriterT BlockState Builder b) -> Builder (Block, Block, Block, a, b)
@@ -870,6 +858,7 @@ putWhile condCtx entry@(Block _ func) condProg loopProg = do
     setTermInstBranch condBlock condCtx
 
   cRet <- updateBasicBlock condBlock $ condProg loopBlock contBlock
+  
   lRet <- updateBasicBlock loopBlock $ loopProg condBlock
   
   return (condBlock, loopBlock, contBlock, cRet, lRet)
