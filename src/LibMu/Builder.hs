@@ -42,6 +42,8 @@ module LibMu.Builder (
   createVariable,
   createVariables,
 
+  uniqueVariable,
+  
   createExecClause,
   putBasicBlock,
   withBasicBlock,
@@ -370,6 +372,12 @@ createVariable name typeVal = SSAVariable Local name typeVal
 
 createVariables :: UvmTypeDef -> [String] -> [SSAVariable]
 createVariables t lst = map (flip createVariable t) lst
+
+uniqueVariable :: String -> UvmTypeDef -> Builder SSAVariable
+uniqueVariable name typeVal = do
+  n <- getVarID
+  lift $ modify $ \pState -> pState {builderVarID = succ n}
+  return $ SSAVariable Local (printf "%s%d" name n) typeVal
 
 createExecClause :: Block -> [SSAVariable] -> Block -> [SSAVariable] -> ExceptionClause
 createExecClause (Block name1 _) v1 (Block name2 _) v2 = ExceptionClause (DestinationClause name1 v1) (DestinationClause name2 v2)
@@ -862,3 +870,4 @@ putWhile condCtx entry@(Block _ func) condProg loopProg = do
   lRet <- updateBasicBlock loopBlock $ loopProg condBlock
   
   return (condBlock, loopBlock, contBlock, cRet, lRet)
+

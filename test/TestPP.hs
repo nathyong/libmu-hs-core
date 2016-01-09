@@ -340,25 +340,25 @@ ppSpec = hspec $ do
 
     --Comminst operation
     it "correctly represents a Comminst operation: no flags, no types, no sigs, no args, no exec, no alive" $
-      pp (Comminst "@uvm.sayHi" Nothing Nothing Nothing Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi"
+      pp (Comminst "uvm.sayHi" Nothing Nothing Nothing Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi"
 
     it "correctly represents a Comminst operation: with flags, no types, no sigs, no args, no exec, no alive" $
-      pp (Comminst "@uvm.sayHi" (Just [Flag "DEFAULT", Flag "STDCALL"]) Nothing Nothing Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi [#DEFAULT #STDCALL]"
+      pp (Comminst "uvm.sayHi" (Just [Flag "DEFAULT", Flag "STDCALL"]) Nothing Nothing Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi [#DEFAULT #STDCALL]"
 
     it "correctly represents a Comminst operation: no flags, with types, no sigs, no args, no exec, no alive" $
-      pp (Comminst "@uvm.sayHi" Nothing (Just [i8, i32, ref3]) Nothing Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi <@i8 @i32 @ref3>"
+      pp (Comminst "uvm.sayHi" Nothing (Just [i8, i32, ref3]) Nothing Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi <@i8 @i32 @ref3>"
 
     it "correctly represents a Comminst operation: no flags, no types, with sigs, no args, no exec, no alive" $
-      pp (Comminst "@uvm.sayHi" Nothing Nothing (Just [addi32Sig]) Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi <[@addi32sig]>"
+      pp (Comminst "uvm.sayHi" Nothing Nothing (Just [addi32Sig]) Nothing Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi <[@addi32sig]>"
 
     it "correctly represents a Comminst operation: no flags, no types, no sigs, with args, no exec, no alive" $
-      pp (Comminst "@uvm.sayHi" Nothing Nothing Nothing (Just [a, b, c]) Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi (%a %b %c)"
+      pp (Comminst "uvm.sayHi" Nothing Nothing Nothing (Just [a, b, c]) Nothing Nothing) `shouldBe` "COMMINST @uvm.sayHi (%a %b %c)"
 
     it "correctly represents a Comminst operation: no flags, no types, no sigs, no args, with exec, no alive" $
-      pp (Comminst "@uvm.sayHi" Nothing Nothing Nothing Nothing (Just exceptionClause) Nothing) `shouldBe` "COMMINST @uvm.sayHi EXC(%cont(%a) %exec_hldr(%b))"
+      pp (Comminst "uvm.sayHi" Nothing Nothing Nothing Nothing (Just exceptionClause) Nothing) `shouldBe` "COMMINST @uvm.sayHi EXC(%cont(%a) %exec_hldr(%b))"
 
     it "correctly represents a Comminst operation: no flags, no types, no sigs, no args, no exec, with alive" $
-      pp (Comminst "@uvm.sayHi" Nothing Nothing Nothing Nothing Nothing (Just (KeepAlive [a, b]))) `shouldBe` "COMMINST @uvm.sayHi KEEPALIVE(%a %b)"
+      pp (Comminst "uvm.sayHi" Nothing Nothing Nothing Nothing Nothing (Just (KeepAlive [a, b]))) `shouldBe` "COMMINST @uvm.sayHi KEEPALIVE(%a %b)"
 
     --Load operation
     it "correctly represents a Load operation: no ptr, no mem order, no exec" $

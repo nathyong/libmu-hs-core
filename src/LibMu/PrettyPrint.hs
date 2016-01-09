@@ -160,7 +160,7 @@ instance PrettyPrint Expression where
           printf "SWAPSTACK %s %s %s%s%s" (pp v1) (pp csClause) (pp nsClause) (printMaybe pp exec) (printMaybe pp alive)
         NewThread v1 nsClause exec -> printf "NEWTHREAD %s %s%s" (pp v1) (pp nsClause) (printMaybe pp exec)
         Comminst inst fLst tLst sLst vLst exec alive ->
-          printf "COMMINST %s%s%s%s%s%s%s" inst (printMaybe printFlagList fLst) (printMaybe printTypeList tLst) (printMaybe printSigList sLst) (printMaybe printArgList vLst) (printMaybe pp exec) (printMaybe pp alive)
+          printf "COMMINST @%s%s%s%s%s%s%s" inst (printMaybe printFlagList fLst) (printMaybe printTypeList tLst) (printMaybe printSigList sLst) (printMaybe printArgList vLst) (printMaybe pp exec) (printMaybe pp alive)
         Load f1 memOrd t1 v1 exec -> printf "LOAD%s%s <%s> %s%s" (if f1 then " PTR" else "") (printMaybe pp memOrd) (pp t1) (pp v1) (printMaybe pp exec)
         Store f1 memOrd t1 v1 v2 exec -> printf "STORE%s%s <%s> %s %s%s" (if f1 then " PTR" else "") (printMaybe pp memOrd) (pp t1) (pp v1) (pp v2) (printMaybe pp exec)
         ExtractValueS t1 index v1 exec -> printf "EXTRACTVALUE <%s %d> %s%s" (pp t1) index (pp v1) (printMaybe pp exec)

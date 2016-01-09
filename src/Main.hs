@@ -6,19 +6,22 @@ import CommandLine
 import Parser
 import Compile
 import LibMu.Builder (pp, checkBuilder)
+import LibMu.Execute (runBundle)
 
 data Arg = File
          | Output
          | Check
          | Parse
+         | Run
 
 arguments :: [StdArgument Arg]
 arguments = [
   Argument "--file" "-f" "bf file to use" True (STRING Nothing) File,
   Argument "--output" "-o" "output file to use" False (STRING Nothing) Output,
   Argument "--check" "-c" "output type check log" False (PRESENT False) Check,
-  Argument "--parse" "-p" "Parse File" False (PRESENT False) Parse
-            ]
+  Argument "--parse" "-p" "Parse File" False (PRESENT False) Parse,
+  Argument "--run" "-r" "Run Generated Bundle" False (PRESENT False) Run
+  ]
 
 main :: IO ()
 main = do
@@ -26,10 +29,11 @@ main = do
   let args = parse arguments opts
   case args of
     Left err -> putStrLn $ flag err
-    Right [f, o, c, p] -> do
+    Right [f, o, c, p, r] -> do
       let file = fromMandatorySTRING $ value f
           parse' = fromMandatoryPRESENT $ value p
           check' = fromMandatoryPRESENT $ value c
+          run' = fromMandatoryPRESENT $ value r
       parsed <- (runParser parseProgram () file) <$> readFile file
       case parsed of
         Left err -> putStrLn $ show err
@@ -45,8 +49,15 @@ main = do
                     if check' then do
                       putStrLn "Type Check"
                       putStrLn $ unlines $ checkBuilder bs
-                      putStrLn $ pp bs
-                    else putStrLn $ pp bs
+                      if run' then
+                        runBundle $ pp bs
+                      else
+                        putStrLn $ pp bs                      
+                    else
+                      if run' then
+                        runBundle $ pp bs
+                      else
+                        putStrLn $ pp bs
             STRING (Just output) -> 
               if parse' then do
                 writeFile output $ show parsedProg
