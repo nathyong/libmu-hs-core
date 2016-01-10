@@ -127,7 +127,7 @@ putTokens index block prog = case prog of
         putTokens indCont cont ts
         
       PutChar -> do
-        tmp <- uniqueVariable "tmp" i32
+        tmp <- createVariable "tmp" i32
         updateBasicBlock block $ do
           putComment "Put Char"
           arrElem <- putGetElemIRef False runner index Nothing
@@ -137,7 +137,7 @@ putTokens index block prog = case prog of
         putTokens index block ts
         
       GetChar -> do
-        arrVal <- uniqueVariable "arrVal" i32
+        arrVal <- createVariable "arrVal" i32
         
         updateBasicBlock block $ do
           putComment "Get Char"          

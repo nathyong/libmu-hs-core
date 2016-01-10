@@ -36,13 +36,12 @@ module LibMu.Builder (
   putFunction,
   putTypeDef,
   putGlobal,
+  putExpose,
   putConstant,
   putFuncDecl,
 
   createVariable,
   createVariables,
-
-  uniqueVariable,
   
   createExecClause,
   putBasicBlock,
@@ -283,7 +282,6 @@ containsGlobal name = do
     Just (GlobalDef _ _) -> return True
     Just _ -> return False
 
-
 getFuncDecl :: String -> Builder FuncSig
 getFuncDecl name = do
   pState <- lift $ gets funcdecls
@@ -366,18 +364,22 @@ putGlobal name dType = do
                     })
   return var
 
+putExpose :: String -> String -> CallConvention -> SSAVariable -> Builder ()
+putExpose name funcName cconv cookie = do
+  let e = ExposeDef name funcName cconv cookie
+  lift $ modify (\pState ->
+                  pState {
+                    exposes = M.insert name e (exposes pState)
+                         })
 
-createVariable :: String -> UvmTypeDef -> SSAVariable
-createVariable name typeVal = SSAVariable Local name typeVal
-
-createVariables :: UvmTypeDef -> [String] -> [SSAVariable]
-createVariables t lst = map (flip createVariable t) lst
-
-uniqueVariable :: String -> UvmTypeDef -> Builder SSAVariable
-uniqueVariable name typeVal = do
+createVariable :: String -> UvmTypeDef -> Builder SSAVariable
+createVariable name typeVal = do
   n <- getVarID
   lift $ modify $ \pState -> pState {builderVarID = succ n}
   return $ SSAVariable Local (printf "%s%d" name n) typeVal
+
+createVariables :: UvmTypeDef -> [String] -> Builder [SSAVariable]
+createVariables t lst = mapM (flip createVariable t) lst
 
 createExecClause :: Block -> [SSAVariable] -> Block -> [SSAVariable] -> ExceptionClause
 createExecClause (Block name1 _) v1 (Block name2 _) v2 = ExceptionClause (DestinationClause name1 v1) (DestinationClause name2 v2)
@@ -453,47 +455,36 @@ putParams types = do
 
 putBinOp :: BinaryOp -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putBinOp op v1@(SSAVariable _ _ opType) v2 exec = do
-  n <- lift $ lift $ gets builderVarID
-  let assignee = createVariable (printf "v%d" n) opType
+  assignee <- lift $ createVariable "v" opType
   tell $ BlockState ([Assign [assignee] (BinaryOperation op opType v1 v2 exec)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
-
 
 putConvOp :: ConvertOp -> UvmTypeDef -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putConvOp op dest var exec = do
-  n <- lift $ lift $ gets builderVarID
-  let assignee = createVariable (printf "v%d" n) dest
+  assignee <- lift $ createVariable "v" dest
   tell $ BlockState  ([Assign [assignee] (ConvertOperation op (varType var) dest var exec)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
 
 
 putCmpOp :: CompareOp -> SSAVariable -> SSAVariable -> WriterT BlockState Builder SSAVariable
 putCmpOp op  v1@(SSAVariable _ _ opType) v2 = do
-  n <- lift $ lift $ gets builderVarID
-  let assignee = createVariable (printf "v%d" n) i1
+  assignee <- lift $ createVariable "v" i1
   tell $ BlockState ([Assign [assignee] (CompareOperation op opType v1 v2)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
 
 
 putAtomicRMW :: AtomicRMWOp -> Bool -> MemoryOrder -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putAtomicRMW op ptr memOrd loc opnd exec = do
-  n <- lift $ lift $ gets builderVarID
-  let assignee = createVariable (printf "v%d" n) (varType opnd)
+  assignee <- lift $ createVariable "v" (varType opnd)
   tell $ BlockState ([Assign [assignee] (AtomicRMWOperation ptr memOrd op (varType opnd) loc opnd exec)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
 
 
 putCmpXchg :: Bool -> Bool -> MemoryOrder -> MemoryOrder -> SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder (SSAVariable, SSAVariable)
 putCmpXchg ptr weak mem1 mem2 loc expec desir exec = do
-  n <- lift $ lift $ gets builderVarID
-  let ass1 = createVariable (printf "v%d" n) opndType
-      ass2 = createVariable (printf "v%d" (succ n)) i1
+  ass1 <- lift $ createVariable "v" opndType
+  ass2 <- lift $ createVariable "v" i1
   tell $ BlockState ([Assign [ass1, ass2] (CmpXchg ptr weak mem1 mem2 opndType loc expec desir exec)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = (+2) $ builderVarID pState}
   return (ass1, ass2)
   where
     opndType = case uvmTypeDefType $ varType loc of
@@ -508,45 +499,37 @@ putFence memOrd = tell $ BlockState ([Assign [] (Fence memOrd)], [], Nothing)
 
 putNew :: UvmTypeDef -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putNew t exec  = do
-  n <- lift $ lift $ gets builderVarID
   let operation = New t exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
 
 
 putNewHybrid :: UvmTypeDef -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putNewHybrid t len exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = NewHybrid t (varType len) len exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
 
                                                
 putAlloca :: UvmTypeDef -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putAlloca t exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = Alloca t exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
 
 
 putAllocaHybrid :: UvmTypeDef -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putAllocaHybrid t len exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = AllocaHybrid t (varType len) len exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
   
 
@@ -633,10 +616,10 @@ setTermInstSwapStack swappee csClause nsClause exec alive =
 
 putNewThread :: SSAVariable -> NewStackClause -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putNewThread stack nsClause exec = do
-  n <- lift $ lift $ gets builderVarID
-  let assignee = createVariable (printf "v%d" n) threadref
+  
+  assignee <- lift $ createVariable "v" threadref
   tell $ BlockState ([Assign [assignee] (NewThread stack nsClause exec)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
+  
   return assignee
 
 
@@ -652,10 +635,10 @@ putComminst assignee name flags types sigs args exec alive =
 
 putLoad :: Bool -> Maybe MemoryOrder -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putLoad ptr memOrd var exec = do
-  n <- lift $ lift $ gets builderVarID
-  let assignee = createVariable (printf "v%d" n) vType
+  
+  assignee <- lift $ createVariable "v" vType
   tell $ BlockState ([Assign [assignee] (Load ptr memOrd vType var  exec)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
+  
   return assignee
   where
     vType :: UvmTypeDef
@@ -678,67 +661,63 @@ putStore ptr memOrd loc newVal exec =
 
 putExtractValueS :: Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putExtractValueS index opnd exec = do
-  n <- lift $ lift $ gets builderVarID
+  
   let operation  = ExtractValueS (varType opnd) index opnd exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] (ExtractValueS (varType opnd) index opnd exec)], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
+  
   return assignee
 
 
 putInsertValueS :: Int -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putInsertValueS index opnd newVal exec = do
-  n <- lift $ lift $ gets builderVarID
+  
   let operation = InsertValueS (varType opnd) index newVal opnd exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
+  
   return assignee
   
 
 putExtractValue :: SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putExtractValue opnd index exec = do
-  n <- lift $ lift $ gets builderVarID
+  
   let operation = ExtractValue (varType opnd) (varType index) opnd index exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
+  
   return assignee
   
 
 putInsertValue :: SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putInsertValue opnd index newVal exec = do
-  n <- lift $ lift $ gets builderVarID
+  
   let operation = InsertValue (varType opnd) (varType index) opnd index newVal exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
+  
   return assignee
 
 
 putShuffleVector :: SSAVariable -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putShuffleVector v1 v2 mask exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = ShuffleVector (varType v1) (varType mask) v1 v2 mask exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
 
 
 putGetIRef :: SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putGetIRef opnd exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = GetIRef opndType opnd exec
   assT <- let retT = IRef opndType in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
   where
     opndType :: UvmTypeDef
@@ -749,12 +728,10 @@ putGetIRef opnd exec = do
 
 putGetFieldIRef :: Bool -> Int -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putGetFieldIRef ptr index opnd exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = GetFieldIRef ptr opndType index opnd exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
   where
     opndType :: UvmTypeDef
@@ -766,12 +743,10 @@ putGetFieldIRef ptr index opnd exec = do
 
 putGetElemIRef :: Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putGetElemIRef ptr opnd index exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = GetElemIRef ptr opndType (varType index) opnd index exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
   where
     opndType :: UvmTypeDef
@@ -783,12 +758,10 @@ putGetElemIRef ptr opnd index exec = do
 
 putShiftIRef :: Bool -> SSAVariable -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putShiftIRef ptr opnd offset exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = ShiftIRef ptr opndType (varType offset) opnd offset exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
   where
     opndType :: UvmTypeDef
@@ -799,12 +772,10 @@ putShiftIRef ptr opnd offset exec = do
 
 putGetVarPartIRef :: Bool -> SSAVariable -> Maybe ExceptionClause -> WriterT BlockState Builder SSAVariable
 putGetVarPartIRef ptr opnd exec = do
-  n <- lift $ lift $ gets builderVarID
   let operation = GetVarPartIRef ptr opndType opnd exec
   assT <- let retT = head $ retType operation in lift $ putTypeDef (show retT) retT
-  let assignee = createVariable (printf "v%d" n) assT
+  assignee <- lift $ createVariable "v" assT
   tell $ BlockState ([Assign [assignee] operation], [], Nothing)
-  lift $ lift $ modify $ \pState -> pState {builderVarID = succ $ builderVarID pState}
   return assignee
   where
     opndType :: UvmTypeDef
