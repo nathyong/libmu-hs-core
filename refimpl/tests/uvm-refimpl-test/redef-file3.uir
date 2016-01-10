@@ -1,0 +1,6 @@
+.const @I64_43 <@i64> = 43
+
+.funcdef @meaning_of_life VERSION %v2 <@IntReturner> {
+    %entry():
+        RET @I64_43
+}

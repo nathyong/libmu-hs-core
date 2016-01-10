@@ -1,0 +1,32 @@
+// require 'primitives.uir'
+
+.typedef @ri16 = ref<@i16>
+
+.typedef @s1 = struct<@i8 @i16 @i32 @i64 @float @double @refvoid @irefvoid @weakrefvoid @ri16>
+
+.typedef @Cons = struct<@i64 @RefCons>
+.typedef @RefCons = ref<@Cons>
+
+.typedef @foo = struct<@double @i64>
+
+.typedef @a0 = array<@i8 100>
+.typedef @a1 = array<@foo 10>
+.typedef @a2 = array<@a1 10>
+
+.typedef @h0 = hybrid <@i8>
+.typedef @h1 = hybrid <@foo @i64>
+
+.funcsig @sig0 = () -> ()
+
+.typedef @ii8 = iref<@i8>
+.typedef @iii8 = iref<@ii8>
+.funcsig @sig1 = (@i32 @iii8) -> (@i32)
+
+.typedef @f0 = funcref<@sig0>
+.typedef @f1 = funcref<@sig1>
+
+.typedef @s2 = struct<@f0 @thread @stack @tagref64>
+
+.funcdecl @fun  <@sig0>
+.funcdecl @fun2 <@sig0>
+.const @NULLF0 <@f0> = NULL
