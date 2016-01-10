@@ -79,23 +79,7 @@ data MuVM = MuVM {
   execute :: FunPtr (Ptr MuVM -> IO ())
                  } deriving (Generic)
 
-foreign import ccall "dynamic" mkNewContext :: FunPtr (Ptr MuVM -> IO (Ptr MuCtx)) -> Ptr MuVM -> IO (Ptr MuCtx)
-foreign import ccall "dynamic" mkIdOf :: FunPtr (Ptr MuVM -> MuName ->  IO Hs_MuID) -> Ptr MuVM ->  MuName -> IO Hs_MuID
-foreign import ccall "dynamic" mkNameOf :: FunPtr (Ptr MuVM -> MuID ->  IO Hs_MuName) -> Ptr MuVM ->  MuID -> IO Hs_MuName
-foreign import ccall "dynamic" mkSetTrapHandler :: FunPtr (Ptr MuVM -> MuTrapHandler -> MuCPtr -> IO ()) -> Ptr MuVM -> MuTrapHandler -> MuCPtr -> IO ()
-foreign import ccall "dynamic" mkExecute :: FunPtr (Ptr MuVM -> IO ()) -> Ptr MuVM -> IO ()
 
-newContext :: Ptr MuVM -> IO (Ptr MuCtx)
-newContext mvm = do
-  mvmVal <- peek mvm
-  mkNewContext (new_context mvmVal) mvm
-
-
-
-foreign import ccall "dynamic" mkHandleFromFunc :: FunPtr (Ptr MuCtx -> MuID -> IO MuFuncRefValue) -> Ptr MuCtx -> MuID -> IO MuFuncRefValue
-foreign import ccall "dynamic" mkNewStack :: FunPtr (Ptr MuCtx -> MuFuncRefValue -> IO MuStackRefValue) -> Ptr MuCtx -> MuFuncRefValue -> IO MuStackRefValue
-foreign import ccall "dynamic" mkNewThread :: FunPtr (Ptr MuCtx -> MuStackRefValue -> MuHowToResume -> Ptr MuValue -> CInt -> MuRefValue -> IO MuThreadRefValue) -> Ptr MuCtx -> MuStackRefValue -> MuHowToResume -> Ptr MuValue -> CInt -> MuRefValue -> IO MuThreadRefValue
-foreign import ccall "dynamic" mkCtxIdOf :: FunPtr (Ptr MuCtx -> MuName -> IO MuID) -> Ptr MuCtx -> MuName -> IO MuID
 instance CStorable MuVM
 
 instance Storable MuVM where
@@ -104,8 +88,13 @@ instance Storable MuVM where
   poke = cPoke
   peek = cPeek
 
-foreign import ccall "dynamic" mkLoadBundle :: FunPtr (Ptr MuCtx -> CString -> CInt -> IO ()) -> Ptr MuCtx -> CString -> CInt -> IO ()
-foreign import ccall "dynamic" mkCloseContext :: FunPtr (Ptr MuCtx -> IO ()) -> Ptr MuCtx -> IO ()
+
+foreign import ccall "dynamic" mkNewContext :: FunPtr (Ptr MuVM -> IO (Ptr MuCtx)) -> Ptr MuVM -> IO (Ptr MuCtx)
+foreign import ccall "dynamic" mkIdOf :: FunPtr (Ptr MuVM -> MuName ->  IO Hs_MuID) -> Ptr MuVM ->  MuName -> IO Hs_MuID
+foreign import ccall "dynamic" mkNameOf :: FunPtr (Ptr MuVM -> MuID ->  IO Hs_MuName) -> Ptr MuVM ->  MuID -> IO Hs_MuName
+foreign import ccall "dynamic" mkSetTrapHandler :: FunPtr (Ptr MuVM -> MuTrapHandler -> MuCPtr -> IO ()) -> Ptr MuVM -> MuTrapHandler -> MuCPtr -> IO ()
+foreign import ccall "dynamic" mkExecute :: FunPtr (Ptr MuVM -> IO ()) -> Ptr MuVM -> IO ()
+
 
 data MuCtx = MuCtx {
   ctx_header :: Ptr (),   -- Refer to internal stuff
@@ -173,7 +162,7 @@ data MuCtx = MuCtx {
   -- Manipulate Mu values of the array or vector type
   -- str can be MuArrayValue or MuVectorValue
   extract_element :: FunPtr (Ptr MuCtx -> MuValue -> MuIntValue -> IO MuValue),
-  insert_elemtn :: FunPtr (Ptr MuCtx -> MuValue -> MuIntValue -> MuValue -> IO MuValue),
+  insert_element :: FunPtr (Ptr MuCtx -> MuValue -> MuIntValue -> MuValue -> IO MuValue),
   
   -- Heap allocation
   new_fixed :: FunPtr (Ptr MuCtx -> MuID -> IO MuRefValue),
@@ -252,3 +241,139 @@ instance Storable MuCtx where
   peek = cPeek
 
 
+foreign import ccall "dynamic" mkCtxIdOf :: FunPtr (Ptr MuCtx -> MuName -> IO MuID) -> Ptr MuCtx -> MuName -> IO MuID
+foreign import ccall "dynamic" mkCtxNameOf :: FunPtr (Ptr MuCtx -> MuID) -> Ptr MuCtx -> MuID
+
+foreign import ccall "dynamic" mkCloseContext :: FunPtr (Ptr MuCtx -> IO ()) -> Ptr MuCtx -> IO ()
+
+foreign import ccall "dynamic" mkLoadBundle :: FunPtr (Ptr MuCtx -> CString -> CInt -> IO ()) -> Ptr MuCtx -> CString -> CInt -> IO ()
+foreign import ccall "dynamic" mkLoadHail :: FunPtr (Ptr MuCtx -> CString -> CInt -> IO ()) -> Ptr MuCtx -> CString -> CInt -> IO ()
+
+foreign import ccall "dynamic" mkHandleFromSint8 :: FunPtr (Ptr MuCtx -> Int8_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> Int8_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromUint8 :: FunPtr (Ptr MuCtx -> UInt8_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> UInt8_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromSint16 :: FunPtr (Ptr MuCtx -> Int16_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> Int16_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromUint16 :: FunPtr (Ptr MuCtx -> UInt16_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> UInt16_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromSint32 :: FunPtr (Ptr MuCtx -> Int32_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> Int32_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromUint32 :: FunPtr (Ptr MuCtx -> UInt32_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> UInt32_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromSint64 :: FunPtr (Ptr MuCtx -> Int64_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> Int64_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromInt64 :: FunPtr (Ptr MuCtx -> UInt64_t -> CInt -> IO MuIntValue) -> Ptr MuCtx -> UInt64_t -> CInt -> IO MuIntValue
+foreign import ccall "dynamic" mkHandleFromFloat :: FunPtr (Ptr MuCtx -> CFloat -> IO MuFloatValue) -> Ptr MuCtx -> CFloat -> IO MuFloatValue
+foreign import ccall "dynamic" mkHandleFromDouble :: FunPtr (Ptr MuCtx -> CDouble -> IO MuDoubleValue) -> Ptr MuCtx -> CDouble -> IO MuDoubleValue
+foreign import ccall "dynamic" mkHandleFromPtr :: FunPtr (Ptr MuCtx -> MuID -> MuCPtr -> IO MuUPtrValue) -> Ptr MuCtx -> MuID -> MuCPtr -> IO MuUPtrValue
+foreign import ccall "dynamic" mkHandleFromFp :: FunPtr (Ptr MuCtx -> MuID -> MuCFP -> IO MuUFPValue) -> Ptr MuCtx -> MuID -> MuCFP -> IO MuUFPValue
+
+foreign import ccall "dynamic" mkHandleToSint8 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO Int8_t) -> Ptr MuCtx -> MuIntValue -> IO Int8_t
+foreign import ccall "dynamic" mkHandleToUint8 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO UInt8_t) -> Ptr MuCtx -> MuIntValue -> IO UInt8_t
+foreign import ccall "dynamic" mkHandleToSint16 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO Int16_t) -> Ptr MuCtx -> MuIntValue -> IO Int16_t
+foreign import ccall "dynamic" mkHandleToUint16 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO UInt16_t) -> Ptr MuCtx -> MuIntValue -> IO UInt16_t
+foreign import ccall "dynamic" mkHandleToSint32 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO Int32_t) -> Ptr MuCtx -> MuIntValue -> IO Int32_t
+foreign import ccall "dynamic" mkHandleToUint32 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO UInt32_t) -> Ptr MuCtx -> MuIntValue -> IO UInt32_t
+foreign import ccall "dynamic" mkHandleToSint64 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO Int64_t) -> Ptr MuCtx -> MuIntValue -> IO Int64_t
+foreign import ccall "dynamic" mkHandleToUint64 :: FunPtr (Ptr MuCtx -> MuIntValue -> IO UInt64_t) -> Ptr MuCtx -> MuIntValue -> IO UInt64_t
+foreign import ccall "dynamic" mkHandleToFloat :: FunPtr (Ptr MuCtx -> MuFloatValue -> IO CFloat) -> Ptr MuCtx -> MuFloatValue -> IO CFloat
+foreign import ccall "dynamic" mkHandleToDouble :: FunPtr (Ptr MuCtx -> MuDoubleValue -> IO CDouble) -> Ptr MuCtx -> MuDoubleValue -> IO CDouble
+foreign import ccall "dynamic" mkHandleToPtr :: FunPtr (Ptr MuCtx -> MuUPtrValue -> IO MuCPtr) -> Ptr MuCtx -> MuUPtrValue -> IO MuCPtr
+foreign import ccall "dynamic" mkHandleToFp :: FunPtr (Ptr MuCtx -> MuUFPValue -> IO MuCFP) -> Ptr MuCtx -> MuUFPValue -> IO MuCFP
+
+foreign import ccall "dynamic" mkHandleFromConst :: FunPtr (Ptr MuCtx -> MuID -> IO MuValue) -> Ptr MuCtx -> MuID -> IO MuValue
+foreign import ccall "dynamic" mkHandleFromGlobal :: FunPtr (Ptr MuCtx -> MuID -> IO MuIRefValue) -> Ptr MuCtx -> MuID -> IO MuIRefValue
+foreign import ccall "dynamic" mkHandleFromFunc :: FunPtr (Ptr MuCtx -> MuID -> IO MuFuncRefValue) -> Ptr MuCtx -> MuID -> IO MuFuncRefValue
+foreign import ccall "dynamic" mkhandleFromExpose :: FunPtr (Ptr MuCtx -> MuID -> IO MuValue) -> Ptr MuCtx -> MuID -> IO MuValue
+
+foreign import ccall "dynamic" mkDeleteValue :: FunPtr (Ptr MuCtx -> MuValue -> IO ()) -> Ptr MuCtx -> MuValue -> IO ()
+
+foreign import ccall "dynamic" mkRefEq :: FunPtr (Ptr MuCtx -> MuValue -> MuValue -> IO CInt) -> Ptr MuCtx -> MuValue -> MuValue -> IO CInt
+
+foreign import ccall "dynamic" mkRefUlt :: FunPtr (Ptr MuCtx -> MuIRefValue -> MuIRefValue -> IO CInt) -> Ptr MuCtx -> MuIRefValue -> MuIRefValue -> IO CInt
+
+foreign import ccall "dynamic" mkExtractValue :: FunPtr (Ptr MuCtx -> MuStructValue -> CInt -> IO MuValue) -> Ptr MuCtx -> MuStructValue -> CInt -> IO MuValue
+foreign import ccall "dynamic" mkInsertValue :: FunPtr (Ptr MuCtx -> MuStructValue -> CInt -> MuValue -> IO MuValue) -> Ptr MuCtx -> MuStructValue -> CInt -> MuValue -> IO MuValue
+
+foreign import ccall "dynamic" mkExtractElement :: FunPtr (Ptr MuCtx -> MuValue -> MuIntValue -> IO MuValue) -> Ptr MuCtx -> MuValue -> MuIntValue -> IO MuValue
+foreign import ccall "dynamic" mkInsertElement :: FunPtr (Ptr MuCtx -> MuValue -> MuIntValue -> MuValue -> IO MuValue) -> Ptr MuCtx -> MuValue -> MuIntValue -> MuValue -> IO MuValue
+
+foreign import ccall "dynamic" mkNewFixed :: FunPtr (Ptr MuCtx -> MuID -> IO MuRefValue) -> Ptr MuCtx -> MuID -> IO MuRefValue
+foreign import ccall "dynamic" mkNewHybrid :: FunPtr (Ptr MuCtx -> MuID -> MuIntValue -> IO MuRefValue) -> Ptr MuCtx -> MuID -> MuIntValue -> IO MuRefValue
+
+foreign import ccall "dynamic" mkRefCast :: FunPtr (Ptr MuCtx -> MuValue -> MuID -> IO MuValue) -> Ptr MuCtx -> MuValue -> MuID -> IO MuValue
+
+foreign import ccall "dynamic" mkGetIref :: FunPtr (Ptr MuCtx -> MuRefValue -> IO MuIRefValue) -> Ptr MuCtx -> MuRefValue -> IO MuIRefValue
+foreign import ccall "dynamic" mkGetFieldIref :: FunPtr (Ptr MuCtx -> MuIRefValue -> CInt -> IO MuIRefValue) -> Ptr MuCtx -> MuIRefValue -> CInt -> IO MuIRefValue
+foreign import ccall "dynamic" mkGetElemIref :: FunPtr (Ptr MuCtx -> MuIRefValue -> MuIntValue -> IO MuIRefValue) -> Ptr MuCtx -> MuIRefValue -> MuIntValue -> IO MuIRefValue
+foreign import ccall "dynamic" mkShiftIref :: FunPtr (Ptr MuCtx -> MuIRefValue -> MuIntValue -> IO MuIRefValue) -> Ptr MuCtx -> MuIRefValue -> MuIntValue -> IO MuIRefValue
+foreign import ccall "dynamic" mkGetVarPartIref :: FunPtr (Ptr MuCtx -> MuIRefValue -> IO MuIRefValue) -> Ptr MuCtx -> MuIRefValue -> IO MuIRefValue
+
+foreign import ccall "dynamic" mkLoad :: FunPtr (Ptr MuCtx -> MuMemOrd -> MuIRefValue -> IO MuValue) -> Ptr MuCtx -> MuMemOrd -> MuIRefValue -> IO MuValue
+foreign import ccall "dynamic" mkStore :: FunPtr (Ptr MuCtx -> MuMemOrd -> MuIRefValue -> MuValue -> IO ()) -> Ptr MuCtx -> MuMemOrd -> MuIRefValue -> MuValue -> IO ()
+foreign import ccall "dynamic" mkCmpxchg :: FunPtr (Ptr MuCtx -> MuMemOrd -> MuMemOrd -> CInt -> MuIRefValue -> MuValue -> MuValue -> Ptr CInt -> IO MuValue) -> Ptr MuCtx -> MuMemOrd -> MuMemOrd -> CInt -> MuIRefValue -> MuValue -> MuValue -> Ptr CInt -> IO MuValue
+foreign import ccall "dynamic" mkAtomicrmw :: FunPtr (Ptr MuCtx -> MuMemOrd -> MuAtomicRMWOp -> MuIRefValue -> MuValue -> IO MuValue) -> Ptr MuCtx -> MuMemOrd -> MuAtomicRMWOp -> MuIRefValue -> MuValue -> IO MuValue
+foreign import ccall "dynamic" mkFence :: FunPtr (Ptr MuCtx -> MuMemOrd -> IO ()) -> Ptr MuCtx -> MuMemOrd -> IO ()
+
+foreign import ccall "dynamic" mkNewStack :: FunPtr (Ptr MuCtx -> MuFuncRefValue -> IO MuStackRefValue) -> Ptr MuCtx -> MuFuncRefValue -> IO MuStackRefValue
+foreign import ccall "dynamic" mkNewThread :: FunPtr (Ptr MuCtx -> MuStackRefValue -> MuHowToResume -> Ptr MuValue -> CInt -> MuRefValue -> IO MuThreadRefValue) -> Ptr MuCtx -> MuStackRefValue -> MuHowToResume -> Ptr MuValue -> CInt -> MuRefValue -> IO MuThreadRefValue
+foreign import ccall "dynamic" mkKillStack :: FunPtr (Ptr MuCtx -> MuStackRefValue -> IO ()) -> Ptr MuCtx -> MuStackRefValue -> IO ()
+
+foreign import ccall "dynamic" mkNewCursor :: FunPtr (Ptr MuCtx -> MuStackRefValue -> IO MuFCRefValue) -> Ptr MuCtx -> MuStackRefValue -> IO MuFCRefValue
+foreign import ccall "dynamic" mkNewFrame :: FunPtr (Ptr MuCtx -> MuFCRefValue -> IO ()) -> Ptr MuCtx -> MuFCRefValue -> IO ()
+foreign import ccall "dynamic" mkCopyCursor :: FunPtr (Ptr MuCtx -> MuFCRefValue -> IO MuFCRefValue) -> Ptr MuCtx -> MuFCRefValue -> IO MuFCRefValue
+foreign import ccall "dynamic" mkCloseCursor :: FunPtr (Ptr MuCtx -> MuFCRefValue -> IO ()) -> Ptr MuCtx -> MuFCRefValue -> IO ()
+
+foreign import ccall "dynamic" mkCurFunc :: FunPtr (Ptr MuCtx -> MuFCRefValue -> IO MuID) -> Ptr MuCtx -> MuFCRefValue -> IO MuID
+foreign import ccall "dynamic" mkCurFunc_ver :: FunPtr (Ptr MuCtx -> MuFCRefValue -> IO MuID) -> Ptr MuCtx -> MuFCRefValue -> IO MuID
+foreign import ccall "dynamic" mkCurInst :: FunPtr (Ptr MuCtx -> MuFCRefValue -> IO MuID) -> Ptr MuCtx -> MuFCRefValue -> IO MuID
+foreign import ccall "dynamic" mkDumpKeepalives :: FunPtr (Ptr MuCtx -> MuFCRefValue -> Ptr MuValue -> IO ()) -> Ptr MuCtx -> MuFCRefValue -> Ptr MuValue -> IO ()
+
+foreign import ccall "dynamic" mkPopFramesTo :: FunPtr (Ptr MuCtx -> MuFCRefValue -> IO ()) -> Ptr MuCtx -> MuFCRefValue -> IO ()
+foreign import ccall "dynamic" mkPushFrame :: FunPtr (Ptr MuCtx -> MuStackRefValue -> MuFuncRefValue -> IO ()) -> Ptr MuCtx -> MuStackRefValue -> MuFuncRefValue -> IO ()
+
+foreign import ccall "dynamic" mkTr64IsFp :: FunPtr (Ptr MuCtx -> MuTagRef64Value -> IO CInt) -> Ptr MuCtx -> MuTagRef64Value -> IO CInt
+foreign import ccall "dynamic" mkTr64IsInt :: FunPtr (Ptr MuCtx -> MuTagRef64Value -> IO CInt) -> Ptr MuCtx -> MuTagRef64Value -> IO CInt
+foreign import ccall "dynamic" mkTr64isRef :: FunPtr (Ptr MuCtx -> MuTagRef64Value -> IO CInt) -> Ptr MuCtx -> MuTagRef64Value -> IO CInt
+foreign import ccall "dynamic" mkTr64ToFp :: FunPtr (Ptr MuCtx -> MuTagRef64Value -> IO MuDoubleValue) -> Ptr MuCtx -> MuTagRef64Value -> IO MuDoubleValue
+foreign import ccall "dynamic" mkTr64ToInt :: FunPtr (Ptr MuCtx -> MuTagRef64Value -> IO MuIntValue) -> Ptr MuCtx -> MuTagRef64Value -> IO MuIntValue
+foreign import ccall "dynamic" mkTr64ToRef :: FunPtr (Ptr MuCtx -> MuTagRef64Value -> IO MuRefValue) -> Ptr MuCtx -> MuTagRef64Value -> IO MuRefValue
+foreign import ccall "dynamic" mkTr64ToTag :: FunPtr (Ptr MuCtx -> MuTagRef64Value -> IO MuIntValue) -> Ptr MuCtx -> MuTagRef64Value -> IO MuIntValue
+  
+foreign import ccall "dynamic" mkTr64FromFp :: FunPtr (Ptr MuCtx -> MuDoubleValue -> IO MuTagRef64Value) -> Ptr MuCtx -> MuDoubleValue -> IO MuTagRef64Value
+foreign import ccall "dynamic" mkTr64FromInt :: FunPtr (Ptr MuCtx -> MuIntValue -> IO MuTagRef64Value) -> Ptr MuCtx -> MuIntValue -> IO MuTagRef64Value
+foreign import ccall "dynamic" mkTr64FromRef :: FunPtr (Ptr MuCtx -> MuRefValue -> MuIntValue -> IO MuTagRef64Value) -> Ptr MuCtx -> MuRefValue -> MuIntValue -> IO MuTagRef64Value
+
+foreign import ccall "dynamic" mkEnableWatchpoint :: FunPtr (Ptr MuCtx -> CInt -> IO ()) -> Ptr MuCtx -> CInt -> IO ()
+foreign import ccall "dynamic" mkDisableWatchpoint :: FunPtr (Ptr MuCtx -> CInt -> IO ()) -> Ptr MuCtx -> CInt -> IO ()
+
+foreign import ccall "dynamic" mkPin :: FunPtr (Ptr MuCtx -> MuValue -> IO MuUPtrValue) -> Ptr MuCtx -> MuValue -> IO MuUPtrValue
+foreign import ccall "dynamic" mkUnpin :: FunPtr (Ptr MuCtx -> MuValue -> IO ()) -> Ptr MuCtx -> MuValue -> IO ()
+
+foreign import ccall "dynamic" mkExpose :: FunPtr (Ptr MuCtx -> MuFuncRefValue -> MuCallConv -> MuIntValue -> IO MuValue) -> Ptr MuCtx -> MuFuncRefValue -> MuCallConv -> MuIntValue -> IO MuValue
+foreign import ccall "dynamic" mkUnexpose :: FunPtr (Ptr MuCtx -> MuCallConv -> MuValue -> IO ()) -> Ptr MuCtx -> MuCallConv -> MuValue -> IO ()
+
+
+call0 :: (Storable a) => (FunPtr (Ptr a -> IO b) -> (Ptr a -> IO b)) -> (a -> FunPtr (Ptr a -> IO b)) -> Ptr a -> IO b
+call0 mkFn fn ctx = do
+  ctxVal <- peek ctx
+  mkFn (fn ctxVal) ctx
+
+call1 :: (Storable a) => (FunPtr (Ptr a -> b -> IO c) -> (Ptr a -> b -> IO c)) -> (a -> FunPtr (Ptr a -> b -> IO c)) -> Ptr a -> b -> IO c
+call1 mkFn fn ctx arg = do
+  ctxVal <- peek ctx
+  mkFn (fn ctxVal) ctx arg
+
+call2 :: (Storable a) => (FunPtr (Ptr a -> b -> c -> IO d) -> (Ptr a -> b -> c -> IO d)) -> (a -> FunPtr (Ptr a -> b -> c -> IO d)) -> Ptr a -> b -> c -> IO d
+call2 mkFn fn ctx arg arg2 = do
+  ctxVal <- peek ctx
+  mkFn (fn ctxVal) ctx arg arg2
+
+call3 :: (Storable a) => (FunPtr (Ptr a -> b -> c -> d -> IO e) -> (Ptr a -> b -> c -> d -> IO e)) -> (a -> FunPtr (Ptr a -> b -> c -> d -> IO e)) -> Ptr a -> b -> c -> d -> IO e
+call3 mkFn fn ctx arg arg2 arg3 = do
+  ctxVal <- peek ctx
+  mkFn (fn ctxVal) ctx arg arg2 arg3
+
+call4 :: (Storable a) => (FunPtr (Ptr a -> b -> c -> d -> e -> IO f) -> (Ptr a -> b -> c -> d -> e -> IO f)) -> (a -> FunPtr (Ptr a -> b -> c -> d -> e -> IO f)) -> Ptr a -> b -> c -> d -> e -> IO f
+call4 mkFn fn ctx arg arg2 arg3 arg4 = do
+  ctxVal <- peek ctx
+  mkFn (fn ctxVal) ctx arg arg2 arg3 arg4
+
+call5 :: (Storable a) => (FunPtr (Ptr a -> b -> c -> d -> e -> f -> IO g) -> (Ptr a -> b -> c -> d -> e -> f -> IO g)) -> (a -> FunPtr (Ptr a -> b -> c -> d -> e -> f -> IO g)) -> Ptr a -> b -> c -> d -> e -> f -> IO g
+call5 mkFn fn ctx arg arg2 arg3 arg4 arg5 = do
+  ctxVal <- peek ctx
+  mkFn (fn ctxVal) ctx arg arg2 arg3 arg4 arg5
