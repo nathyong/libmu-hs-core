@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="ivy-report.xsl"?>
+<ivy-report version="1.0">
+	<info
+		organisation="org.microvm"
+		module="microvm-refimpl2_2.11"
+		revision="2.1.0"
+		conf="antlr4"
+		confs="compile, runtime, test, provided, optional, compile-internal, runtime-internal, test-internal, plugin, sources, docs, pom, scala-tool, antlr4"
+		date="20160110233107"/>
+	<dependencies>
+		<module organisation="org.antlr" name="antlr4">
+			<revision name="4.5.1" status="release" pubdate="20150717073038" resolver="sbt-chain" artresolver="sbt-chain" homepage="" downloaded="false" searched="false" default="false" conf="default, compile, runtime, default(compile), master" position="0">
+				<metadata-artifact status="no" details="" size="5047" time="0" location="/home/andrew/.ivy2/cache/org.antlr/antlr4/ivy-4.5.1.xml" searched="false" origin-is-local="false" origin-location="https://jcenter.bintray.com/org/antlr/antlr4/4.5.1/antlr4-4.5.1.pom"/>
+				<caller organisation="org.microvm" name="microvm-refimpl2_2.11" conf="antlr4" rev="4.5.1" rev-constraint-default="4.5.1" rev-constraint-dynamic="4.5.1" callerrev="2.1.0"/>
+				<artifacts>
+					<artifact name="antlr4" type="jar" ext="jar" status="no" details="" size="1478697" time="0" location="/home/andrew/.ivy2/cache/org.antlr/antlr4/jars/antlr4-4.5.1.jar">
+						<origin-location is-local="false" location="https://jcenter.bintray.com/org/antlr/antlr4/4.5.1/antlr4-4.5.1.jar"/>
+					</artifact>
+				</artifacts>
+			</revision>
+		</module>
+	</dependencies>
+</ivy-report>
