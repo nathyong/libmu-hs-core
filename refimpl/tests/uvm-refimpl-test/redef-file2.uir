@@ -1,0 +1,6 @@
+.const @I64_99 <@i64> = 99
+
+.funcdef @foxsay VERSION %v1 <@IntReturner> {
+    %entry():
+        RET @I64_99
+}

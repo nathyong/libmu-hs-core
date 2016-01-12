@@ -3,11 +3,26 @@
 module LibMu.TypeCheck (
   Log,             -- [String]
   Typed(..),
-  retType,
+  retType,         -- :: Assign -> UvmType
   checkExpression, -- :: Expression -> Bool
   checkAssign,     -- :: Assign -> Bool
   checkAst         -- :: Program -> Log
        ) where
+
+{-
+This module allows type checking over a mu Abstract Syntax Tree.
+To do this, the module uses a Typed Class, which defined the concepts of type equivalence and type similarity.
+
+Type Equality:
+For most types, type equality is the same as deriving Eq, however, because types can be recursive, structs can't
+be shown to be type equivalent. (properly)
+
+Type Similar:
+Two types are generally type similar if their outermost types are equal, that means that
+int<32> and int<8> are type similar,
+weakref<@i32> and weakref<@float> are type similar,
+struct <@float @i32> and struct <@void>
+-}
 
 import Prelude (
   Bool(..), Eq(..), Int, String, Monad(..),
@@ -19,7 +34,6 @@ import LibMu.MuSyntax
 import Control.Monad.Trans.Reader (runReader, Reader, ask, local)
 import Control.Applicative ((<*>), (<$>))
 import Text.Printf (printf)
-import System.IO.Unsafe (unsafePerformIO)
 
 class Typed a where
   --Type Equivalent (infix)
@@ -105,7 +119,7 @@ instance Typed UvmType where
     (IRef t1, IRef t2) -> t1 #= t2
     (WeakRef t1, WeakRef t2) -> t1 #= t2
     (UPtr t1, UPtr t2) -> t1 #= t2
-    (Struct _, Struct _) -> True
+    (Struct ts1, Struct ts2) -> (length ts1) == (length ts2) && (and $ zipWith ts ts1 ts2)
     (Array t1 l1, Array t2 l2) -> t1 #= t2 && (l1 == l2)
     (Hybrid ts1 t1, Hybrid ts2 t2) ->  (ts1 #= ts2) && (t1 #= t2)
     (Void, Void) -> True
@@ -355,8 +369,8 @@ retType expr = case expr of
   CCall _ _ sig _ _ _ _ -> map uvmTypeDefType $ funcSigReturnType sig
   Branch1 _ -> []
   Branch2 _ _ _ -> []
-  WatchPoint _ _ ts _ _ _ _ -> map uvmTypeDefType ts
-  Trap _ ts _ _ -> map uvmTypeDefType ts
+  WatchPoint _ _ types _ _ _ _ -> map uvmTypeDefType types
+  Trap _ types _ _ -> map uvmTypeDefType types
   WPBranch _ _ _ -> []
   Switch _ _ _ _ -> []
   SwapStack _ _ _ _ _ -> []
@@ -372,14 +386,15 @@ retType expr = case expr of
     _ -> []
   InsertValue t  _ _ _ _ _ -> [uvmTypeDefType t]
   ShuffleVector t1 t2 _ _ _ _ -> case (uvmTypeDefType t1, uvmTypeDefType t2) of
-    (Vector t1 _, Vector _ len) -> [Vector t1 len]
+    (Vector vecT1 _, Vector _ len) -> [Vector vecT1 len]
     _ -> []
   GetIRef t _ _ -> [IRef t]
   GetFieldIRef ptr t index _ _ -> case (ptr, uvmTypeDefType t) of
-    (True, Struct ts) -> [UPtr $ ts !! index]
-    (False, Struct ts) -> [IRef $ ts !! index]
-    (True, Hybrid ts _) -> [UPtr $ ts !! index]
-    (False, Hybrid ts _) -> [IRef $ ts !! index]
+    (True, Struct types) -> [UPtr $ types !! index]
+    (False, Struct types) -> [IRef $ types !! index]
+    (True, Hybrid types _) -> [UPtr $ types !! index]
+    (False, Hybrid types _) -> [IRef $ types !! index]
+    _ -> []
   GetElemIRef ptr t _ _ _ _ -> case (ptr, uvmTypeDefType t) of
     (True, Array vecType _) -> [UPtr vecType]
     (False, Array vecType _) -> [IRef vecType]
@@ -394,7 +409,7 @@ retType expr = case expr of
   Comment _ -> []
 
 checkAssign :: Assign -> Bool
-checkAssign ass@(Assign vars expr) = case expr of
+checkAssign (Assign vars expr) = case expr of
   Comminst _ _ _ _ _ _ _ -> True
   _ -> (checkExpression expr) && (map (uvmTypeDefType . varType) vars #= retType expr)
   

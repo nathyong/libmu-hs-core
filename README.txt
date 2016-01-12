@@ -1,11 +1,20 @@
-to use, compile using cabal.
+to use, edit Makefile and change
+JAVA_HOME to your java home.
 
-cabal configure
-cabal build
+run makefile (make)
+
+test:
+cabal test
+
+test hello world:
+cp hello.bf dist/build/MuBF/
+cd dist/build/MuBF/
+./MuBF -f hello.bf -c --run
+
 
 the resultant MuIR binary can be called using several command line arguments:
 
---file, -f file: file to compile or parse 
+--file, -f file: file to compile or parse
 --output, -o file: if given, the resultant text will be written to the output file specified
 --parse, -p: if given, the program will only be parsed and displayed (either to stdout or output file)
 --check, -c: if given, the program will be type checked in MuIR format.
@@ -14,4 +23,3 @@ e.g.
 
 ./MuIR --file hello.bf -c --out output.uir
 ./MuIR --file hello.bf
-

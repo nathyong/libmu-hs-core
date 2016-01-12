@@ -1,0 +1,220 @@
+// require "primitives.uir"
+
+.funcsig @a_v = (@i64) -> ()
+
+.funcsig @getpid_sig = () -> (@i32)
+.typedef @getpid_fp  = ufuncptr<@getpid_sig>
+
+.funcdef @getpidtest VERSION @getpidtest_v1 <@a_v> {
+    %entry(<@i64> %p0):
+        %fp = PTRCAST <@i64 @getpid_fp> %p0
+        %rv = CCALL #DEFAULT <@getpid_fp @getpid_sig> %fp ()
+
+        [%trap] TRAP <> KEEPALIVE (%fp %rv)
+        COMMINST @uvm.thread_exit
+}
+
+.typedef @size_t = int<64>
+.funcsig @write_sig = (@i32 @ptrvoid @size_t) -> (@size_t)
+.typedef @write_fp  = ufuncptr<@write_sig>
+
+.typedef @CharBuf = hybrid<@i64 @i8>
+.const @I8_H  <@i8> = 0x48
+.const @I8_e  <@i8> = 0x65
+.const @I8_l  <@i8> = 0x6c
+.const @I8_o  <@i8> = 0x6f
+.const @I8_NL <@i8> = 0x0a
+
+.funcsig @writetest_sig = (@write_fp) -> ()
+.funcdef @writetest VERSION @writetest_v1 <@writetest_sig> {
+    %entry(<@write_fp> %fp):
+        %buf = NEWHYBRID <@CharBuf @i64> @I64_6
+        %buf_i = GETIREF <@CharBuf> %buf
+        %buf_v0 = GETVARPARTIREF <@CharBuf> %buf_i
+        STORE <@i8> %buf_v0 @I8_H
+        %buf_v1 = SHIFTIREF <@i8 @i64> %buf_v0 @I64_1
+        STORE <@i8> %buf_v1 @I8_e
+        %buf_v2 = SHIFTIREF <@i8 @i64> %buf_v1 @I64_1
+        STORE <@i8> %buf_v2 @I8_l
+        %buf_v3 = SHIFTIREF <@i8 @i64> %buf_v2 @I64_1
+        STORE <@i8> %buf_v3 @I8_l
+        %buf_v4 = SHIFTIREF <@i8 @i64> %buf_v3 @I64_1
+        STORE <@i8> %buf_v4 @I8_o
+        %buf_v5 = SHIFTIREF <@i8 @i64> %buf_v4 @I64_1
+        STORE <@i8> %buf_v5 @I8_NL
+
+        %buf_v0_p = COMMINST @uvm.native.pin <@irefi8> (%buf_v0)
+        %buf_v0_pv = PTRCAST <@ptri8 @ptrvoid> %buf_v0_p
+
+        %rv = CCALL #DEFAULT <@write_fp @write_sig> %fp (@I32_1 %buf_v0_pv @I64_6)
+
+        COMMINST @uvm.native.unpin <@irefi8> (%buf_v0)
+
+        [%trap] TRAP <> KEEPALIVE (%fp %rv %buf %buf_v0_p)
+        COMMINST @uvm.thread_exit
+}
+
+.funcsig @memcpy_sig = (@ptrvoid @ptrvoid @size_t) -> (@ptrvoid)
+.typedef @memcpy_fp  = ufuncptr<@write_sig>
+
+.global @FP_MEMCPY <@memcpy_fp>
+
+.funcdef @memcpytest VERSION @memcpytest_v1 <@v_v> {
+    %entry():
+        %fp = LOAD <@memcpy_fp> @FP_MEMCPY
+
+        %buf = NEWHYBRID <@CharBuf @i64> @I64_6
+        %buf_i = GETIREF <@CharBuf> %buf
+        %buf_v0 = GETVARPARTIREF <@CharBuf> %buf_i
+        STORE <@i8> %buf_v0 @I8_H
+        %buf_v1 = SHIFTIREF <@i8 @i64> %buf_v0 @I64_1
+        STORE <@i8> %buf_v1 @I8_e
+        %buf_v2 = SHIFTIREF <@i8 @i64> %buf_v1 @I64_1
+        STORE <@i8> %buf_v2 @I8_l
+        %buf_v3 = SHIFTIREF <@i8 @i64> %buf_v2 @I64_1
+        STORE <@i8> %buf_v3 @I8_l
+        %buf_v4 = SHIFTIREF <@i8 @i64> %buf_v3 @I64_1
+        STORE <@i8> %buf_v4 @I8_o
+        %buf_v5 = SHIFTIREF <@i8 @i64> %buf_v4 @I64_1
+        STORE <@i8> %buf_v5 @I8_NL
+
+        %buf2 = NEWHYBRID <@CharBuf @i64> @I64_6
+        %buf2_i = GETIREF <@CharBuf> %buf2
+        %buf2_v0 = GETVARPARTIREF <@CharBuf> %buf2_i
+
+        %buf_v0_p = COMMINST @uvm.native.pin <@irefi8> (%buf_v0)
+        %buf_v0_pv = PTRCAST <@ptri8 @ptrvoid> %buf_v0_p
+        %buf2_v0_p = COMMINST @uvm.native.pin <@irefi8> (%buf2_v0)
+        %buf2_v0_pv = PTRCAST <@ptri8 @ptrvoid> %buf2_v0_p
+
+        %rv = CCALL #DEFAULT <@memcpy_fp @memcpy_sig> %fp (%buf2_v0_pv %buf_v0_pv @I64_6)
+
+        COMMINST @uvm.native.unpin <@irefi8> (%buf2_v0)
+        COMMINST @uvm.native.unpin <@irefi8> (%buf_v0)
+
+        %buf2_0 = LOAD <@i8> %buf2_v0
+        %buf2_v1 = SHIFTIREF <@i8 @i64> %buf2_v0 @I64_1
+        %buf2_1 = LOAD <@i8> %buf2_v1
+        %buf2_v2 = SHIFTIREF <@i8 @i64> %buf2_v1 @I64_1
+        %buf2_2 = LOAD <@i8> %buf2_v2
+        %buf2_v3 = SHIFTIREF <@i8 @i64> %buf2_v2 @I64_1
+        %buf2_3 = LOAD <@i8> %buf2_v3
+        %buf2_v4 = SHIFTIREF <@i8 @i64> %buf2_v3 @I64_1
+        %buf2_4 = LOAD <@i8> %buf2_v4
+        %buf2_v5 = SHIFTIREF <@i8 @i64> %buf2_v4 @I64_1
+        %buf2_5 = LOAD <@i8> %buf2_v5
+
+        [%trap] TRAP <> KEEPALIVE (%fp %rv %buf2_v0_p %buf2_0 %buf2_1 %buf2_2 %buf2_3 %buf2_4 %buf2_5)
+        COMMINST @uvm.thread_exit
+}
+
+.typedef @struct_foo = struct<@i64 @i32 @i16 @i8>
+.typedef @struct_bar = struct<@ptrvoid @fpv_v>
+.typedef @struct_baz1 = struct<@float @i32>
+.typedef @struct_baz = struct<@struct_baz1 @double>
+
+.typedef @irefstruct_baz = iref<@struct_baz>
+.typedef @ptrstruct_baz = uptr<@struct_baz>
+
+.funcsig @foo_func_sig = (@struct_foo @ptri64 @ptri32 @ptri16 @ptri8) -> ()
+.funcsig @bar_func_sig = (@struct_bar @ptrptrvoid @ptrfpv_v) -> ()
+.funcsig @baz_func_sig = (@struct_baz @ptrfloat @ptri32 @ptrdouble @ptrstruct_baz) -> (@struct_baz)
+.typedef @foo_func_fp = ufuncptr<@foo_func_sig>
+.typedef @bar_func_fp = ufuncptr<@bar_func_sig>
+.typedef @baz_func_fp = ufuncptr<@baz_func_sig>
+
+.const @I64BIG <@i64> = 0x55aa55aa55aa55aa
+.const @I32BIG <@i32> = 0x5a5a5a5a
+.const @I16BIG <@i16> = 0xa5a5
+.const @I8BIG  <@i8 > = 0x61
+
+.const @o_foo <@struct_foo> = {@I64BIG @I32BIG @I16BIG @I8BIG}
+
+.funcdef @foo_func_test VERSION @foo_func_test_v1 <@a_v> {
+    %entry(<@i64> %p0):
+        %fp = PTRCAST <@i64 @foo_func_fp> %p0
+
+        %aa = ALLOCA <@i64>
+        %ab = ALLOCA <@i32>
+        %ac = ALLOCA <@i16>
+        %ad = ALLOCA <@i8>
+        %pa = COMMINST @uvm.native.pin <@irefi64> (%aa)
+        %pb = COMMINST @uvm.native.pin <@irefi32> (%ab)
+        %pc = COMMINST @uvm.native.pin <@irefi16> (%ac)
+        %pd = COMMINST @uvm.native.pin <@irefi8 > (%ad)
+
+        [%call] CCALL #DEFAULT <@foo_func_fp @foo_func_sig> %fp (@o_foo %pa %pb %pc %pd)
+
+        COMMINST @uvm.native.unpin <@irefi8 > (%ad)
+        COMMINST @uvm.native.unpin <@irefi16> (%ac)
+        COMMINST @uvm.native.unpin <@irefi32> (%ab)
+        COMMINST @uvm.native.unpin <@irefi64> (%aa)
+
+        %a = LOAD <@i64> %aa
+        %b = LOAD <@i64> %ab
+        %c = LOAD <@i64> %ac
+        %d = LOAD <@i64> %ad
+
+        [%trap] TRAP <> KEEPALIVE (%fp %a %b %c %d)
+        COMMINST @uvm.thread_exit
+}
+
+.const @o_bar_a <@ptrvoid> = 0x123456789abcdef0 
+.const @o_bar_b <@fpv_v> = 0xfedcba9876543210
+.const @o_bar <@struct_bar> = {@o_bar_a @o_bar_b}
+.typedef @irefptrvoid = iref<@ptrvoid>
+.typedef @ireffpv_v = iref<@fpv_v>
+
+.funcdef @bar_func_test VERSION @bar_func_test_v1 <@a_v> {
+    %entry(<@i64> %p0):
+        %fp = PTRCAST <@i64 @bar_func_fp> %p0
+
+        %aa = ALLOCA <@ptrvoid>
+        %ab = ALLOCA <@fpv_v>
+        %pa = COMMINST @uvm.native.pin <@irefptrvoid> (%aa)
+        %pb = COMMINST @uvm.native.pin <@ireffpv_v> (%ab)
+
+        [%call] CCALL #DEFAULT <@bar_func_fp @bar_func_sig> %fp (@o_bar %pa %pb)
+
+        COMMINST @uvm.native.unpin <@ireffpv_v> (%ab)
+        COMMINST @uvm.native.unpin <@irefptrvoid> (%aa)
+
+        %a = LOAD <@ptrvoid> %aa
+        %b = LOAD <@fpv_v> %ab
+
+        [%trap] TRAP <> KEEPALIVE (%fp %a %b)
+        COMMINST @uvm.thread_exit
+}
+
+.const @o_baz_a <@struct_baz1> = {@F_1 @I32_2}
+.const @o_baz <@struct_baz> = {@o_baz_a @D_3}
+
+.funcdef @baz_func_test VERSION @baz_func_test_v1 <@a_v> {
+    %entry(<@i64> %p0):
+        %fp = PTRCAST <@i64 @baz_func_fp> %p0
+
+        %aa = ALLOCA <@float>
+        %ab = ALLOCA <@i32>
+        %ac = ALLOCA <@double>
+        %aextra = ALLOCA <@struct_baz>
+        %pa = COMMINST @uvm.native.pin <@ireffloat> (%aa)
+        %pb = COMMINST @uvm.native.pin <@irefi32> (%ab)
+        %pc = COMMINST @uvm.native.pin <@irefdouble> (%ac)
+        %pextra = COMMINST @uvm.native.pin <@irefstruct_baz> (%aextra)
+
+        %rv = CCALL #DEFAULT <@baz_func_fp @baz_func_sig> %fp (@o_baz %pa %pb %pc %pextra)
+
+        COMMINST @uvm.native.unpin <@irefdouble> (%ac)
+        COMMINST @uvm.native.unpin <@irefi32> (%ab)
+        COMMINST @uvm.native.unpin <@ireffloat> (%aa)
+
+        %a = LOAD <@float> %aa
+        %b = LOAD <@i32> %ab
+        %c = LOAD <@double> %ac
+
+        [%trap] TRAP <> KEEPALIVE (%fp %rv %a %b %c %pextra %aextra)
+
+        COMMINST @uvm.native.unpin <@irefstruct_baz> (%aextra)
+
+        COMMINST @uvm.thread_exit
+}
