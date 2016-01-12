@@ -19,7 +19,7 @@ executable MuBF
   main-is:             Main.hs
   other-extensions:    NoImplicitPrelude, FlexibleInstances, ForeignFunctionInterface, DeriveGeneric
   build-depends:       base >=4.8 && <4.9, containers >=0.5 && <0.6, transformers >=0.4 && <0.5, parsec >=3.1 && <3.2, c-storable-deriving >=0.1
-  ghc-options:         -Wall -O2 -fwarn-tabs -optl-Wl,--no-as-needed -optl-Wl,-rpath,/home/andrew/Documents/git/MuBF/refimpl/cbinding/
+  ghc-options:         -Wall -O2 -fwarn-tabs -optl-Wl,--no-as-needed -optl-Wl,-rpath,/home/name_here/Documents/git/bf-mu/refimpl/cbinding/
   include-dirs:        refimpl/cbinding/ /usr/include/
   extra-libraries:     murefimpl2start
   extra-lib-dirs:      refimpl/cbinding/
