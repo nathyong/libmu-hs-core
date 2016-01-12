@@ -34,6 +34,9 @@ to test MuBF with a bf program, copy test-program/hello.bf into dist/build/MuBF/
 ./MuBF -f hello.bf -c -r
 
 This should print a large amount of debug info, and near the bottom. Hello World!
+If however, an error occurs claiming that the linker could not find refimpl2start.so, then you must manually set DYLIB_LIBRARY_PATH.
+export DYLIB_LIBRARY_PATH=/path/to/bf-mu/refimpl/cbinding/
+This is a known issue with mac and setting -rpath for clang 
 
 in future, you can run
 ./MuBF -f file.bf -r | grep -v DEBUG
