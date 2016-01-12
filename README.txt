@@ -9,16 +9,15 @@ openjdk 6, 7 or (preferably) 8 - available on many package managers, as well as 
 
 haskell packages (hspec, parsec & c-storable-deriving). available from cabal:
 cabal update
-cabal install hspec parsec c-storable-deriving
+cabal should automatically install missing dependencies (during cabal build) however if not,
+you can install hspec, parsec & c-storable-deriving which are usually missing
 
 clone the repository:
-git clone https://github.com/microvm/bf-mu.git
+git clone -r https://github.com/microvm/bf-mu.git
 
 cd mu-bf
 
-you need to manually change MuBF.cabal on the line specified ghc-options: under executable MuBF, change /home/name_here/Documents/git/bf-mu/cbinding/ to point to bf-mu/refimpl/cbinding/ for your system.
-
-Important Note. If using a non linux system, the -Wl,--no-as-needed flag may not be needed (and indeed may break the build process), thus if the build fails the first time. Try again but delete the -optl-Wl,--no-as-needed flag from the MuBF.cabal file (ghc-options section)
+you need to manually change MuBF.cabal on the line specified ghc-options: under executable MuBF, change /home/name_here/Documents/git/bf-mu/microvm-refimpl2/cbinding/ to point to bf-mu/microvm-refimpl2/cbinding/ for your system.
 
 for first time use, a makefile has been provided to compile mu refimpl and MuBF (with tests)
 export JAVA_HOME=/path/to/java/home
@@ -41,3 +40,6 @@ This is a known issue with mac and setting -rpath for clang
 in future, you can run
 ./MuBF -f file.bf -r | grep -v DEBUG
 to remove debug and type check information
+
+future builds can be done via
+cabal configure --enable-tests && cabal build

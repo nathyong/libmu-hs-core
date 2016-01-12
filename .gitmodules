@@ -1,0 +1,3 @@
+[submodule "microvm-refimpl2"]
+	path = microvm-refimpl2
+	url = https://github.com/microvm/microvm-refimpl2.git

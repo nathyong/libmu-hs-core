@@ -1,11 +1,12 @@
 all:
 	sbt update
-	cd refimpl/ && sbt compile
-	cd refimpl/cbinding/ && sbt compile
-	cd refimpl/cbinding/ && make
+	cd microvm-refimpl2/ && sbt compile
+	cd microvm-refimpl2/cbinding/ && sbt compile
+	cd microvm-refimpl2/cbinding/ && make
 	cabal configure --enable-tests
 	cabal build
 
 clean:
-	cd refimpl/ && sbt clean
-	cd refimpl/cbinding/ && make veryclean
+	cd microvm-refimpl2/ && sbt clean
+	cd microvm-refimpl2/cbinding/ && sbt clean
+	cd microvm-refimpl2/cbinding/ && make veryclean
