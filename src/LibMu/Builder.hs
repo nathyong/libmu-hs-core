@@ -330,7 +330,8 @@ putFunction name ver sig = do
                     pState {
                       functionDefs = M.insert (name ++ ver) (FunctionDef name ver sig []) (functionDefs pState)
                            })
-  let funcRef = SSAVariable Global name (UvmTypeDef (printf "%s_ref" name) (FuncRef sig))
+  fSig <- putTypeDef (show (FuncRef sig)) (FuncRef sig)
+  let funcRef = SSAVariable Global name fSig
   return $ (Function name ver, funcRef)
 
 putConstant :: String -> UvmTypeDef -> String -> Builder SSAVariable
@@ -356,14 +357,16 @@ putFuncDecl name fSig =
   lift $ modify (\pState -> pState {funcdecls = M.insert name (FunctionDecl name fSig) (funcdecls pState)
                                    })
 
-putGlobal :: String -> UvmTypeDef -> Builder SSAVariable
+putGlobal :: String -> UvmTypeDef -> Builder (SSAVariable, UvmTypeDef)
 putGlobal name dType = do
-  let var = SSAVariable Global name (UvmTypeDef ("iref" ++ uvmTypeDefName dType) (IRef dType))
+  let refType' = IRef dType
+  varType' <- putTypeDef (show refType') refType'
+  let var = SSAVariable Global name varType'
   lift $ modify (\pState ->
                   pState {
                     globals = M.insert name (GlobalDef var dType) (globals pState)
                     })
-  return var
+  return (var, varType')
 
 putExpose :: String -> String -> CallConvention -> SSAVariable -> Builder ()
 putExpose name funcName cconv cookie = do

@@ -10,142 +10,156 @@ import Parser (Token (..))
 import Prelude hiding (EQ)
 import Text.Printf
 
+import Control.Monad.Trans.Reader
+
 type BFTree = [Token]
 
 
 compile :: BFTree -> Builder BuilderState
 compile tree = do
-  (_:_:_:i32:_, _:_:_:_:_:_:i32_0:_:_,_)<- loadStdPrelude
+  (_:i8:_:i32:i64:_, _:_:_:_:_:_:i32_0:_:_,_)<- loadStdPrelude
+
+  arri8x30K <- putTypeDef "arri8x30K" (Array i8 30000)
+  _ <- putGlobal "runner" arri8x30K
+  (buffer, iref_i8) <- putGlobal "buffer" i8
   
-  arri32x30K <- putTypeDef "arri32x30K" (Array i32 30000)
-  _ <- putGlobal "runner" arri32x30K
+  uptr_i8 <- putTypeDef "charPtr" (UPtr i8)
 
-  --addrType <- putTypeDef "AddrType" (MuInt 64)
+  read_sig <- putFuncSig "read.sig" [i32, uptr_i8, i64] [i64]
+  write_sig <- putFuncSig "write.sig" [i32, uptr_i8, i64] [i64]
 
-  getchar_sig <- putFuncSig "getchar.sig" [] [i32]
-  putchar_sig <- putFuncSig "putchar.sig" [i32] [i32]
+  read_fp <- putTypeDef "read_ptr" (UFuncPtr read_sig)
+  write_fp <- putTypeDef "write_ptr" (UFuncPtr write_sig)
 
-  getchar_fp <- putTypeDef "getchar_ptr" (UFuncPtr getchar_sig)
-  putchar_fp <- putTypeDef "putchar_ptr" (UFuncPtr putchar_sig)
-
-  _ <- putConstant "getchar_address" getchar_fp getcharAddr
-  _ <- putConstant "putchar_address" putchar_fp putcharAddr
-
-  main_sig <- putFuncSig "main.sig" [] []
+  _ <- putConstant "read_address" read_fp readAddr
+  _ <- putConstant "write_address" write_fp writeAddr
+  
+  main_sig <- putFuncSig "main.sig" [] [i32]
   (main_v1, _) <- putFunction "main" "v1" main_sig
 
   entry <- putBasicBlock "entry" Nothing main_v1
   block0 <- putBasicBlock "block0000" Nothing main_v1
-
-  updateBasicBlock entry $
-    setTermInstBranch block0 [i32_0]
-
-  [index] <- updateBasicBlock block0 $
-    putParams [i32]
   
-  (ind, ret) <- putTokens index block0 tree
+  buff_ptr <- createVariable "buff_ptr" uptr_i8
+  
+  updateBasicBlock entry $ do
+    putComminst [buff_ptr] "uvm.native.pin" [] [iref_i8] [] [buffer] Nothing Nothing
+    setTermInstBranch block0 [i32_0, buff_ptr]
+    
+  [index, bPtr] <- updateBasicBlock block0 $
+    putParams [i32, uptr_i8]
+  
+  (ind, _, ret) <- runReaderT (putTokens tree) (index, bPtr, block0)
 
   updateBasicBlock ret $ do
+    putComminst [] "uvm.native.unpin" [] [iref_i8] [] [buffer] Nothing Nothing
     putComminst [] "uvm.thread_exit" [] [] [] [] Nothing Nothing
+    
     setTermInstRet [ind]
-  
+
   lift get
 
-putTokens :: SSAVariable -> Block -> [Token] -> Builder (SSAVariable, Block)
-putTokens index block prog = case prog of
-  [] -> return (index, block)
+putTokens :: [Token] -> ReaderT (SSAVariable, SSAVariable, Block) Builder (SSAVariable, SSAVariable, Block)
+putTokens prog = case prog of
+  [] -> ask
   t:ts -> do
 
-    [i32, putchar_ptr, getchar_ptr] <- getTypedefs ["i32", "putchar_ptr", "getchar_ptr"]
+    (index, buff_ptr, block) <- ask
     
-    i32_1 <- getConstant "i32_1"
-    i32_0 <- getConstant "i32_0"
+    [i32, i64, uptr_i8, read_ptr, write_ptr] <- lift $ getTypedefs ["i32", "i64", "charPtr", "read_ptr", "write_ptr"]
+    
+    i32_1 <- lift $ getConstant "i32_1"
+    i32_0 <- lift $ getConstant "i32_0"
+    i64_1 <- lift $ getConstant "i64_1"
+    i8_0 <- lift $ getConstant "i8_0"
+    i8_1 <- lift $ getConstant "i8_1"
+    read_address <- lift $ getConstant "read_address"
+    write_address <- lift $ getConstant "write_address"
 
-    putchar_address <- getConstant "putchar_address"
-    getchar_address <- getConstant "getchar_address"
+    read_sig <- lift $ getFuncSig "read.sig"
+    write_sig <- lift $ getFuncSig "write.sig"
+    
+    runner <- lift $ getGlobal "runner"
 
-    putchar_sig <- getFuncSig "putchar.sig"
-    getchar_sig <- getFuncSig "getchar.sig"
-    
-    runner <- getGlobal "runner"
-    
     case t of
       Increment -> do
-        updateBasicBlock block $ do
+        lift $ updateBasicBlock block $ do
           putComment "Increment"
           arrElem <- putGetElemIRef False runner index Nothing
           arrOldVal <- putLoad False Nothing arrElem Nothing
-          arrNewVal <- putBinOp Add arrOldVal i32_1 Nothing
+          arrNewVal <- putBinOp Add arrOldVal i8_1 Nothing
           putStore False Nothing arrElem arrNewVal Nothing
           
-        putTokens index block ts
+        putTokens ts
       Decrement -> do          
-        updateBasicBlock block $ do
+        lift $ updateBasicBlock block $ do
           putComment "Decrement"
           arrElem <- putGetElemIRef False runner index Nothing
           arrOldVal <- putLoad False Nothing arrElem Nothing
-          arrNewVal <- putBinOp Sub arrOldVal i32_1 Nothing
+          arrNewVal <- putBinOp Sub arrOldVal i8_1 Nothing
           putStore False Nothing arrElem arrNewVal Nothing
           
-        putTokens index block ts
+        putTokens ts
       PtrInc -> do       
-        index' <- updateBasicBlock block $ do
+        index' <- lift $ updateBasicBlock block $ do
           putComment "Ptr Increment"
           putBinOp Add index i32_1 Nothing
-          
-        putTokens index' block ts
+
+        local (const (index', buff_ptr, block)) (putTokens ts)
       PtrDec -> do
-        index' <- updateBasicBlock block $ do
+        index' <- lift $ updateBasicBlock block $ do
           putComment "Ptr Decrement"
           putBinOp Sub index i32_1 Nothing
-          
-        putTokens index' block ts
+
+        local (const (index', buff_ptr, block)) (putTokens ts)
       Loop in_prog -> do
 
-        n <- getVarID
+        n <- lift $ getVarID
         
-        (cond, loop, cont, _, ind) <- putWhile [index] block (\loopBlock contBlock -> do
-          [ind] <- putParams [i32]
+        (cond, loop, cont, _, (ind, bPtr)) <- lift $ putWhile [index, buff_ptr] block (\loopBlock contBlock -> do
+          [ind, bPtr] <- putParams [i32, uptr_i8]
           putComment (printf "Loop Begin : %d" n)
           arrElem <- putGetElemIRef False runner ind Nothing
           arrVal <- putLoad False Nothing arrElem Nothing
-          cmpRes <- putCmpOp EQ arrVal i32_0
-          setTermInstBranch2 cmpRes contBlock [ind] loopBlock [ind])
+          cmpRes <- putCmpOp EQ arrVal i8_0
+          setTermInstBranch2 cmpRes contBlock [ind, bPtr] loopBlock [ind, bPtr])
                                    (\_ -> do
-          [ind] <- putParams [i32]
-          return ind
+          [ind, bPtr] <- putParams [i32, uptr_i8]
+          return (ind, bPtr)
           )
+
+        (loopInd, loopBPtr, loopFin) <- lift $ runReaderT (putTokens in_prog) (ind, bPtr, loop)
         
-        (loopInd, loopFin) <- putTokens ind loop in_prog
-        
-        updateBasicBlock loopFin $
-          setTermInstBranch cond [loopInd]
+        lift $ updateBasicBlock loopFin $
+          setTermInstBranch cond [loopInd, loopBPtr]
  
-        [indCont] <- updateBasicBlock cont $
-          putParams [i32]
+        [indCont, bPtrCont] <- lift $ updateBasicBlock cont $
+          putParams [i32, uptr_i8]
         
-        putTokens indCont cont ts
-        
+        local (const (indCont, bPtrCont, cont)) (putTokens ts)        
+
       PutChar -> do
-        tmp <- createVariable "tmp" i32
-        updateBasicBlock block $ do
+        tmp <- lift $ createVariable "tmp" i64        
+        lift $ updateBasicBlock block $ do
           putComment "Put Char"
           arrElem <- putGetElemIRef False runner index Nothing
           arrVal <- putLoad False Nothing arrElem Nothing
-          putCCall [tmp] Mu putchar_ptr putchar_sig putchar_address [arrVal] Nothing Nothing
-          
-        putTokens index block ts
+          putStore True Nothing buff_ptr arrVal Nothing
+          putCCall [tmp] Mu write_ptr write_sig write_address [i32_1, buff_ptr, i64_1] Nothing Nothing
+        putTokens ts
         
       GetChar -> do
-        arrVal <- createVariable "arrVal" i32
+        arrVal <- lift $ createVariable "arrVal" i64
         
-        updateBasicBlock block $ do
-          putComment "Get Char"          
-          putCCall [arrVal] Mu getchar_ptr getchar_sig getchar_address [] Nothing Nothing
+        lift $ updateBasicBlock block $ do
+          putComment "Get Char"
+          putCCall [arrVal] Mu read_ptr read_sig read_address [i32_0, buff_ptr, i64_1] Nothing Nothing
           arrElem <- putGetElemIRef False runner index Nothing
-          putStore False Nothing arrElem arrVal Nothing
+          buffVal <- putLoad True Nothing buff_ptr Nothing
           
-        putTokens index block ts
-        
+          putStore False Nothing arrElem buffVal Nothing
+          
+        putTokens ts
+
 compileProgram :: [Token] -> Either Error BuilderState
 compileProgram prog = runBuilder (compile prog) emptyBuilderState
