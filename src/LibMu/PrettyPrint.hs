@@ -92,18 +92,6 @@ instance PrettyPrint DestinationClause where
   ppFormat (DestinationClause dest args) = do
     ind <- ask
     return $ printf "%s%s(%s)" ind ('%':dest) (pp args)
-
-instance PrettyPrint Destination where
-  ppFormat d = do
-    ind <- ask
-    return $ ind ++ (
-      case d of
-        (Destination dest args (Just exec)) -> printf "%s(%s) [%s]:" ('%':dest) (unwords $ map destPrint args) (pp exec)
-        (Destination dest args Nothing) -> printf "%s(%s):" dest (unwords $ map destPrint args)
-        )
-      where
-        destPrint :: SSAVariable -> String
-        destPrint arg = printf "<%s> %s" (pp $ varType arg) (pp arg)
       
 instance PrettyPrint Flag where
   ppFormat (Flag s) = do

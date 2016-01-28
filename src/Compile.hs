@@ -18,6 +18,7 @@ type BFTree = [Token]
 compile :: BFTree -> Builder BuilderState
 compile tree = do
   (_:i8:_:i32:i64:_, _:_:_:_:_:_:i32_0:_:_,_)<- loadStdPrelude
+  
 
   arri8x30K <- putTypeDef "arri8x30K" (Array i8 30000)
   _ <- putGlobal "runner" arri8x30K

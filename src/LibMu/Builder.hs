@@ -142,21 +142,28 @@ import           Prelude hiding (EQ)
 import           Text.Printf (printf)
 
 
---Holds Program state for lookup by name
+-- |BuilderState is the state in which the Builder holds all the information to generate a Mu Bundle
+-- |Included in this state is the information to generate Variable IDs
 data BuilderState = BuilderState {
-  builderVarID   :: Int,
-  constants      :: M.Map String Declaration,
-  typedefs       :: M.Map String Declaration,
-  funcsigs       :: M.Map String Declaration,
-  funcdecls      :: M.Map String Declaration,
-  globals        :: M.Map String Declaration,
-  exposes        :: M.Map String Declaration,
-  functionDefs   :: M.Map String Declaration
+  builderVarID   :: Int, -- ^Used to generate Variable Id's
+  constants      :: M.Map String Declaration, -- ^Holds all constants, Indexed by constant name
+  typedefs       :: M.Map String Declaration, -- ^Holds all typedefs, Indexed by type alias
+  funcsigs       :: M.Map String Declaration, -- ^Holds all function signatures, indexed by function name ++ version
+  funcdecls      :: M.Map String Declaration, -- ^Holds all function declarations, Indexed by function name ++ version
+  globals        :: M.Map String Declaration, -- ^Holds all globals, Indexed by variable name
+  exposes        :: M.Map String Declaration, -- ^Holds all exposes, Indexed by name
+  functionDefs   :: M.Map String Declaration  -- ^Holds all Function Defs, Indexed by function name ++ version
   }
 
+-- |Function Data structure holds (Function Name, Function Verrsion)
+-- |This datatype is used to give the programmer some type security when writting code, it ensures that they are using a fucntion instead of a block or variable
+-- |Each Function can be uniquly referenced by this datatype 
 data Function = Function String  String
+
+-- |Block Data structure holds (Block Name, Parent Function)
 data Block = Block String Function
 
+-- |This Pretty Print specification is given to allow debugging of code
 instance PrettyPrint (Either Error BuilderState) where
   ppFormat e = case e of
     Left err -> return err
@@ -165,6 +172,7 @@ instance PrettyPrint (Either Error BuilderState) where
 instance PrettyPrint BuilderState where
   ppFormat = ppFormat . flatten
 
+-- |Transform a BuilderState into a Program
 flatten :: BuilderState -> Program
 flatten (BuilderState _ cons tds fs fdecl gl ex fdefs) = Program $ concat [
         M.elems tds,
@@ -176,12 +184,15 @@ flatten (BuilderState _ cons tds fs fdecl gl ex fdefs) = Program $ concat [
         M.elems fdefs
         ]
 
+-- |Type Check a BuilderState and return it's log
 checkBuilder :: BuilderState -> Log
 checkBuilder = checkAst . flatten
 
+-- |an empty BuilderState, an initial seed value for building programs
 emptyBuilderState :: BuilderState
 emptyBuilderState = BuilderState 0 M.empty M.empty M.empty M.empty M.empty M.empty M.empty
 
+-- |Errors are encoded as error messages
 type Error = String
 type Builder = ExceptT Error (State BuilderState)
 
