@@ -113,13 +113,6 @@ ppSpec = hspec $ do
   describe "pp DestinationClause Instance" $ do
     it "correctly represents a destination clause" $
       pp (DestinationClause "cont" [a, b]) `shouldBe` "%cont(%a %b)" 
-
-  describe "pp Destination Instance" $ do
-    it "correctly represents a destination with no exec clause" $
-      pp (Destination "cont" [a, b] Nothing) `shouldBe` "cont(<@i32> %a <@some_struct> %b):"
-
-    it "correctly represents a destination with an exec clause" $
-      pp (Destination "exec_hldr" [a, b] (Just (SSAVariable Local "exec" i32))) `shouldBe` "%exec_hldr(<@i32> %a <@some_struct> %b) [%exec]:"
   
   describe "pp ExceptionClause Instance" $ do
     it "correctly represents an ExceptionClause" $
