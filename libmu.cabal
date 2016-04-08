@@ -29,7 +29,7 @@ author:              Andrew Hall
 
 -- An email address to which users can send suggestions, bug reports, and 
 -- patches.
-maintainer:          u5825803@anu.edu.au
+maintainer:          nathyong <nathyong@gmail.com>
 
 -- A copyright notice.
 -- copyright:           
@@ -58,7 +58,7 @@ library
   build-depends:       Cabal >= 1.22.4.0
     
   -- Other library packages from which modules are imported.
-  build-depends:       base >=4.8 && <4.9, hspec >=2.2 && <2.3, transformers >=0.4 && <0.5, containers >=0.5 && <0.6, c-storable-deriving
+  build-depends:       base >=4.8 && <4.9, hspec >=2.2 && <2.3, transformers >=0.4, containers >=0.5 && <0.6, c-storable-deriving
   
   -- Directories containing source files.
   hs-source-dirs:      src
